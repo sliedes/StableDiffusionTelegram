@@ -18,7 +18,7 @@ load_dotenv()
 TG_TOKEN = os.getenv('TG_TOKEN')
 MODEL_DATA = os.getenv('MODEL_DATA', 'CompVis/stable-diffusion-v1-4')
 LOW_VRAM_MODE = (os.getenv('LOW_VRAM', 'true').lower() == 'true')
-USE_AUTH_TOKEN = (os.getenv('USE_AUTH_TOKEN', 'true').lower() == 'true')
+HF_AUTH_TOKEN = os.getenv('HF_AUTH_TOKEN', False)
 SAFETY_CHECKER = (os.getenv('SAFETY_CHECKER', 'true').lower() == 'true')
 HEIGHT = int(os.getenv('HEIGHT', '512'))
 WIDTH = int(os.getenv('WIDTH', '512'))
@@ -33,12 +33,12 @@ torch_dtype = torch.float16 if LOW_VRAM_MODE else None
 
 # load the text2img pipeline
 logger.info("Loading text2img pipeline")
-pipe = StableDiffusionPipeline.from_pretrained(MODEL_DATA, revision=revision, torch_dtype=torch_dtype, use_auth_token=USE_AUTH_TOKEN)
+pipe = StableDiffusionPipeline.from_pretrained(MODEL_DATA, revision=revision, torch_dtype=torch_dtype, use_auth_token=HF_AUTH_TOKEN)
 pipe = pipe.to("cpu")
 
 # load the img2img pipeline
 logger.info("Loading img2img pipeline")
-img2imgPipe = StableDiffusionImg2ImgPipeline.from_pretrained(MODEL_DATA, revision=revision, torch_dtype=torch_dtype, use_auth_token=USE_AUTH_TOKEN)
+img2imgPipe = StableDiffusionImg2ImgPipeline.from_pretrained(MODEL_DATA, revision=revision, torch_dtype=torch_dtype, use_auth_token=HF_AUTH_TOKEN)
 img2imgPipe = img2imgPipe.to("cpu")
 
 # disable safety checker if wanted
@@ -93,7 +93,7 @@ def generate_image(prompt, seed=None, height=HEIGHT, width=WIDTH, num_inference_
 
 
 async def generate_and_send_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.info("generate_and_send_photo")
+    logger.debug("generate_and_send_photo")
     if update.effective_user.id != ADMIN_ID and update.message.chat_id != CHAT_ID:
         logger.warning("Denied: user_id={}, chat_id={}", update.effective_user.id, update.message.chat_id)
         return
@@ -108,7 +108,7 @@ async def generate_and_send_photo(update: Update, context: ContextTypes.DEFAULT_
     await context.bot.send_photo(update.message.chat_id, image_to_bytes(im), caption=f'"{prompt}" (Seed: {seed})', reply_markup=get_try_again_markup(), reply_to_message_id=update.message.message_id)
 
 async def generate_and_send_photo_from_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    logger.info("generate_and_send_from_photo")
+    logger.info("generate_and_send_from_photo: {}", update.message.caption)
     if update.message.caption is None:
         await update.message.reply_text("The photo must contain a text in the caption", reply_to_message_id=update.message.message_id)
         return
