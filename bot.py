@@ -11,7 +11,10 @@ from telegram.ext import ApplicationBuilder, CallbackQueryHandler, ContextTypes,
 from io import BytesIO
 import random
 
+from loguru import logger
+
 load_dotenv()
+
 TG_TOKEN = os.getenv('TG_TOKEN')
 MODEL_DATA = os.getenv('MODEL_DATA', 'CompVis/stable-diffusion-v1-4')
 LOW_VRAM_MODE = (os.getenv('LOW_VRAM', 'true').lower() == 'true')
@@ -20,17 +23,21 @@ SAFETY_CHECKER = (os.getenv('SAFETY_CHECKER', 'true').lower() == 'true')
 HEIGHT = int(os.getenv('HEIGHT', '512'))
 WIDTH = int(os.getenv('WIDTH', '512'))
 NUM_INFERENCE_STEPS = int(os.getenv('NUM_INFERENCE_STEPS', '100'))
-STRENTH = float(os.getenv('STRENTH', '0.75'))
+STRENGTH = float(os.getenv('STRENGTH', '0.75'))
 GUIDANCE_SCALE = float(os.getenv('GUIDANCE_SCALE', '7.5'))
+ADMIN_ID = int(os.getenv('ADMIN_ID'))
+CHAT_ID = int(os.getenv('CHAT_ID'))
 
 revision = "fp16" if LOW_VRAM_MODE else None
 torch_dtype = torch.float16 if LOW_VRAM_MODE else None
 
 # load the text2img pipeline
+logger.info("Loading text2img pipeline")
 pipe = StableDiffusionPipeline.from_pretrained(MODEL_DATA, revision=revision, torch_dtype=torch_dtype, use_auth_token=USE_AUTH_TOKEN)
 pipe = pipe.to("cpu")
 
 # load the img2img pipeline
+logger.info("Loading img2img pipeline")
 img2imgPipe = StableDiffusionImg2ImgPipeline.from_pretrained(MODEL_DATA, revision=revision, torch_dtype=torch_dtype, use_auth_token=USE_AUTH_TOKEN)
 img2imgPipe = img2imgPipe.to("cpu")
 
@@ -54,7 +61,8 @@ def get_try_again_markup():
     return reply_markup
 
 
-def generate_image(prompt, seed=None, height=HEIGHT, width=WIDTH, num_inference_steps=NUM_INFERENCE_STEPS, strength=STRENTH, guidance_scale=GUIDANCE_SCALE, photo=None):
+def generate_image(prompt, seed=None, height=HEIGHT, width=WIDTH, num_inference_steps=NUM_INFERENCE_STEPS, strength=STRENGTH, guidance_scale=GUIDANCE_SCALE, photo=None):
+    logger.info("generate_image: {}", prompt)
     seed = seed if seed is not None else random.randint(1, 10000)
     generator = torch.cuda.manual_seed_all(seed)
 
@@ -85,12 +93,22 @@ def generate_image(prompt, seed=None, height=HEIGHT, width=WIDTH, num_inference_
 
 
 async def generate_and_send_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.info("generate_and_send_photo")
+    if update.effective_user.id != ADMIN_ID and update.message.chat_id != CHAT_ID:
+        logger.warning("Denied: user_id={}, chat_id={}", update.effective_user.id, update.message.chat_id)
+        return
+    prompt = update.message.text
+    if not prompt.startswith("!kuva "):
+        logger.debug("Not for me: \"{}\"", prompt)
+        return
+    prompt = prompt.removeprefix("!kuva ")
     progress_msg = await update.message.reply_text("Generating image...", reply_to_message_id=update.message.message_id)
-    im, seed = generate_image(prompt=update.message.text)
+    im, seed = generate_image(prompt=prompt)
     await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
-    await context.bot.send_photo(update.effective_user.id, image_to_bytes(im), caption=f'"{update.message.text}" (Seed: {seed})', reply_markup=get_try_again_markup(), reply_to_message_id=update.message.message_id)
+    await context.bot.send_photo(update.message.chat_id, image_to_bytes(im), caption=f'"{prompt}" (Seed: {seed})', reply_markup=get_try_again_markup(), reply_to_message_id=update.message.message_id)
 
 async def generate_and_send_photo_from_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    logger.info("generate_and_send_from_photo")
     if update.message.caption is None:
         await update.message.reply_text("The photo must contain a text in the caption", reply_to_message_id=update.message.message_id)
         return
@@ -99,7 +117,8 @@ async def generate_and_send_photo_from_photo(update: Update, context: ContextTyp
     photo = await photo_file.download_as_bytearray()
     im, seed = generate_image(prompt=update.message.caption, photo=photo)
     await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
-    await context.bot.send_photo(update.effective_user.id, image_to_bytes(im), caption=f'"{update.message.caption}" (Seed: {seed})', reply_markup=get_try_again_markup(), reply_to_message_id=update.message.message_id)
+    prompt = update.message.caption.removeprefix("!kuva ")
+    await context.bot.send_photo(update.message.chat_id, image_to_bytes(im), caption=f'"{prompt}" (Seed: {seed})', reply_markup=get_try_again_markup(), reply_to_message_id=update.message.message_id)
 
 
 async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -110,10 +129,12 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     progress_msg = await query.message.reply_text("Generating image...", reply_to_message_id=replied_message.message_id)
 
     if query.data == "TRYAGAIN":
+        logger.info("Try again clicked")
         if replied_message.photo is not None and len(replied_message.photo) > 0 and replied_message.caption is not None:
             photo_file = await replied_message.photo[-1].get_file()
             photo = await photo_file.download_as_bytearray()
             prompt = replied_message.caption
+            prompt = prompt.removeprefix("!kuva ")
             im, seed = generate_image(prompt, photo=photo)
         else:
             prompt = replied_message.text
@@ -122,9 +143,10 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         photo_file = await query.message.photo[-1].get_file()
         photo = await photo_file.download_as_bytearray()
         prompt = replied_message.text if replied_message.text is not None else replied_message.caption
+        prompt = prompt.removeprefix("!kuva ")
         im, seed = generate_image(prompt, photo=photo)
     await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
-    await context.bot.send_photo(update.effective_user.id, image_to_bytes(im), caption=f'"{prompt}" (Seed: {seed})', reply_markup=get_try_again_markup(), reply_to_message_id=replied_message.message_id)
+    await context.bot.send_photo(update.effective_chat.id, image_to_bytes(im), caption=f'"{prompt}" (Seed: {seed})', reply_markup=get_try_again_markup(), reply_to_message_id=replied_message.message_id)
 
 
 
@@ -133,5 +155,7 @@ app = ApplicationBuilder().token(TG_TOKEN).build()
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, generate_and_send_photo))
 app.add_handler(MessageHandler(filters.PHOTO, generate_and_send_photo_from_photo))
 app.add_handler(CallbackQueryHandler(button))
+
+logger.info("Starting.")
 
 app.run_polling()
