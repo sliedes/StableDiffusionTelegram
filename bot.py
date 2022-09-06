@@ -115,9 +115,9 @@ async def generate_and_send_photo_from_photo(update: Update, context: ContextTyp
     progress_msg = await update.message.reply_text("Generating image...", reply_to_message_id=update.message.message_id)
     photo_file = await update.message.photo[-1].get_file()
     photo = await photo_file.download_as_bytearray()
-    im, seed = generate_image(prompt=update.message.caption, photo=photo)
-    await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
     prompt = update.message.caption.removeprefix("!kuva ")
+    im, seed = generate_image(prompt=prompt, photo=photo)
+    await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
     await context.bot.send_photo(update.message.chat_id, image_to_bytes(im), caption=f'"{prompt}" (Seed: {seed})', reply_markup=get_try_again_markup(), reply_to_message_id=update.message.message_id)
 
 
@@ -129,15 +129,16 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     progress_msg = await query.message.reply_text("Generating image...", reply_to_message_id=replied_message.message_id)
 
     if query.data == "TRYAGAIN":
-        logger.info("Try again clicked")
         if replied_message.photo is not None and len(replied_message.photo) > 0 and replied_message.caption is not None:
             photo_file = await replied_message.photo[-1].get_file()
             photo = await photo_file.download_as_bytearray()
             prompt = replied_message.caption
             prompt = prompt.removeprefix("!kuva ")
+            logger.info("Try again (img2img): {}", prompt)
             im, seed = generate_image(prompt, photo=photo)
         else:
-            prompt = replied_message.text
+            prompt = replied_message.text.removeprefix("!kuva ")
+            logger.info("Try again: {}", prompt)
             im, seed = generate_image(prompt)
     elif query.data == "VARIATIONS":
         photo_file = await query.message.photo[-1].get_file()
