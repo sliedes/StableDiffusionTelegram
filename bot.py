@@ -11,6 +11,8 @@ from telegram.ext import ApplicationBuilder, CallbackQueryHandler, ContextTypes,
 from io import BytesIO
 import random
 
+from typing import Optional, Tuple, Any
+
 from loguru import logger
 
 load_dotenv()
@@ -55,7 +57,7 @@ if not SAFETY_CHECKER:
     img2imgPipe.safety_checker = dummy_checker
 
 
-def image_to_bytes(image):
+def image_to_bytes(image) -> BytesIO:
     bio = BytesIO()
     bio.name = "image.jpeg"
     image.save(bio, "JPEG")
@@ -63,7 +65,7 @@ def image_to_bytes(image):
     return bio
 
 
-def get_try_again_markup():
+def get_try_again_markup() -> InlineKeyboardMarkup:
     keyboard = [
         [
             InlineKeyboardButton("Try again", callback_data="TRYAGAIN"),
@@ -74,18 +76,33 @@ def get_try_again_markup():
     return reply_markup
 
 
+def parse_seed(prompt: str) -> Tuple[Optional[int], str]:
+    seed: Optional[int] = None
+    if prompt.startswith("seed:") and " " in prompt:
+        seed_str, prompt = prompt.split(" ", 1)
+        seed_str = seed_str.removeprefix("seed:")
+        try:
+            seed = int(seed_str)
+        except ValueError:
+            pass
+    return seed, prompt
+
+
 def generate_image(
-    prompt,
-    seed=None,
-    height=HEIGHT,
-    width=WIDTH,
-    num_inference_steps=NUM_INFERENCE_STEPS,
-    strength=STRENGTH,
-    guidance_scale=GUIDANCE_SCALE,
-    photo=None,
-):
+    prompt: str,
+    seed: Optional[int] = None,
+    height: int = HEIGHT,
+    width: int = WIDTH,
+    num_inference_steps: int = NUM_INFERENCE_STEPS,
+    strength: float = STRENGTH,
+    guidance_scale: float = GUIDANCE_SCALE,
+    photo: Optional[bytes] = None,
+    ignore_seed: bool = False,
+) -> Tuple[Any, int, str]:
     logger.info("generate_image: {}", prompt)
-    seed = seed if seed is not None else random.randint(1, 10000)
+    seed, prompt = parse_seed(prompt)
+    if seed is None or ignore_seed:
+        seed = random.randint(1, 100000)
     generator = torch.cuda.manual_seed_all(seed)
 
     if photo is not None:
@@ -116,7 +133,7 @@ def generate_image(
                 guidance_scale=guidance_scale,
                 num_inference_steps=num_inference_steps,
             )["sample"][0]
-    return image, seed
+    return image, seed, prompt
 
 
 async def generate_and_send_photo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -130,7 +147,7 @@ async def generate_and_send_photo(update: Update, context: ContextTypes.DEFAULT_
         return
     prompt = prompt.removeprefix("!kuva ")
     progress_msg = await update.message.reply_text("Generating image...", reply_to_message_id=update.message.message_id)
-    im, seed = generate_image(prompt=prompt)
+    im, seed, prompt = generate_image(prompt=prompt)
     await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
     await context.bot.send_photo(
         update.message.chat_id,
@@ -152,7 +169,7 @@ async def generate_and_send_photo_from_photo(update: Update, context: ContextTyp
     photo_file = await update.message.photo[-1].get_file()
     photo = await photo_file.download_as_bytearray()
     prompt = update.message.caption.removeprefix("!kuva ")
-    im, seed = generate_image(prompt=prompt, photo=photo)
+    im, seed, prompt = generate_image(prompt=prompt, photo=photo)
     await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
     await context.bot.send_photo(
         update.message.chat_id,
@@ -177,17 +194,17 @@ async def button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
             prompt = replied_message.caption
             prompt = prompt.removeprefix("!kuva ")
             logger.info("Try again (img2img): {}", prompt)
-            im, seed = generate_image(prompt, photo=photo)
+            im, seed, prompt = generate_image(prompt, photo=photo, ignore_seed=True)
         else:
             prompt = replied_message.text.removeprefix("!kuva ")
             logger.info("Try again: {}", prompt)
-            im, seed = generate_image(prompt)
+            im, seed, prompt = generate_image(prompt, ignore_seed=True)
     elif query.data == "VARIATIONS":
         photo_file = await query.message.photo[-1].get_file()
         photo = await photo_file.download_as_bytearray()
         prompt = replied_message.text if replied_message.text is not None else replied_message.caption
         prompt = prompt.removeprefix("!kuva ")
-        im, seed = generate_image(prompt, photo=photo)
+        im, seed, prompt = generate_image(prompt, photo=photo, ignore_seed=True)
     await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
     await context.bot.send_photo(
         update.effective_chat.id,
