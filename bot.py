@@ -1,23 +1,56 @@
+import sys
+import os
+import random
+import logging
+from io import BytesIO
+from typing import Optional, Tuple, Any
+
 import torch
 from torch import autocast
-from diffusers import StableDiffusionPipeline
-from image_to_image import StableDiffusionImg2ImgPipeline, preprocess
 from PIL import Image
 
-import os
 from dotenv import load_dotenv
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CallbackQueryHandler, ContextTypes, MessageHandler, filters
-from io import BytesIO
-import random
-
-from typing import Optional, Tuple, Any
 
 from loguru import logger
+
+from diffusers import StableDiffusionPipeline
+from image_to_image import StableDiffusionImg2ImgPipeline, preprocess
+
+
+# TODO: move logging cruft to a separate module
+class InterceptHandler(logging.Handler):
+    """
+    Add logging handler to augment python stdlib logging.
+
+    Logs which would otherwise go to stdlib logging are redirected through
+    loguru.
+    """
+
+    @logger.catch(default=True, onerror=lambda _: sys.exit(1))
+    def emit(self, record):
+        # Get corresponding Loguru level if it exists.
+        try:
+            level = logger.level(record.levelname).name
+        except ValueError:
+            level = record.levelno
+
+        # Find caller from where originated the logged message.
+        frame, depth = sys._getframe(6), 6
+        while frame and frame.f_code.co_filename == logging.__file__:
+            frame = frame.f_back
+            depth += 1
+
+        logger.opt(depth=depth, exception=record.exc_info).log(level, record.getMessage())
+
+
+logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
 
 load_dotenv()
 
 TG_TOKEN = os.getenv("TG_TOKEN")
+
 MODEL_DATA = os.getenv("MODEL_DATA", "CompVis/stable-diffusion-v1-4")
 LOW_VRAM_MODE = os.getenv("LOW_VRAM", "true").lower() == "true"
 HF_AUTH_TOKEN = os.getenv("HF_AUTH_TOKEN", False)
@@ -38,6 +71,7 @@ logger.info("Loading text2img pipeline")
 pipe = StableDiffusionPipeline.from_pretrained(
     MODEL_DATA, revision=revision, torch_dtype=torch_dtype, use_auth_token=HF_AUTH_TOKEN
 )
+logger.info("Loaded text2img pipeline")
 pipe = pipe.to("cpu")
 
 # load the img2img pipeline
@@ -45,6 +79,7 @@ logger.info("Loading img2img pipeline")
 img2imgPipe = StableDiffusionImg2ImgPipeline.from_pretrained(
     MODEL_DATA, revision=revision, torch_dtype=torch_dtype, use_auth_token=HF_AUTH_TOKEN
 )
+logger.info("Loaded img2img pipeline")
 img2imgPipe = img2imgPipe.to("cpu")
 
 # disable safety checker if wanted
