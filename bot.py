@@ -6,6 +6,7 @@ import random
 import logging
 from io import BytesIO
 from typing import Optional, Tuple, Any
+import re
 
 import torch
 from torch import autocast
@@ -204,9 +205,22 @@ class ParsedRequest:
     tryagain: bool  # Whether we should have a "Try Again" button.
 
 
-def remove_command(prompt: str) -> str:
+QUERY_SEED_RE = re.compile(r'"(.*)" \(Seed: \d+\)')
+
+
+def extract_query_from_string(prompt: str) -> str:
+    logger.debug("extract_query_from_string: {}", prompt)
     while prompt.startswith(COMMAND):
         prompt = prompt.removeprefix(COMMAND)
+
+    while True:
+        match = QUERY_SEED_RE.match(prompt)
+        if not match:
+            break
+        prompt = match.group(1)
+
+    logger.debug("extract_query_from_string returning: {}", prompt)
+
     return prompt
 
 
@@ -250,7 +264,7 @@ async def parse_request(update: Update, message: Message, tryagain: bool = True)
     if msg_of_photo is not None:
         photo = await (await msg_of_photo.photo[-1].get_file()).download_as_bytearray()
 
-    return ParsedRequest(prompt=remove_command(prompt), photo=photo, tryagain=tryagain)
+    return ParsedRequest(prompt=extract_query_from_string(prompt), photo=photo, tryagain=tryagain)
 
 
 async def handle_update(
@@ -298,7 +312,7 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     photo_file = await query.message.photo[-1].get_file()
     photo = await photo_file.download_as_bytearray()
     prompt = parent_message.text if parent_message.text is not None else parent_message.caption
-    prompt = prompt.removeprefix(COMMAND)
+    prompt = extract_query_from_string(prompt)
     logger.info("Variations: {}", prompt)
 
     progress_msg = await query.message.reply_text("Generating image...", reply_to_message_id=reply_to)
@@ -315,7 +329,11 @@ async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 app = ApplicationBuilder().token(TG_TOKEN).build()
 
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_update))
+app.add_handler(
+    MessageHandler(
+        ~filters.UpdateType.EDITED_MESSAGE & ((filters.TEXT & ~filters.COMMAND) | filters.PHOTO), handle_update
+    )
+)
 app.add_handler(MessageHandler(filters.PHOTO, handle_update))
 app.add_handler(CallbackQueryHandler(handle_button))
 
