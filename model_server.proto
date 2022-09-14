@@ -1,0 +1,26 @@
+syntax = "proto3";
+package img_server;
+
+message Metadata {
+    string prompt = 1;
+    int32 width = 2;
+    int32 height = 3;
+    int32 seed = 4;
+    int32 iterations = 5;
+    float strength = 6;
+    float guidance_scale = 7;
+    float priority = 8;  // request priority; default = 100. Higher number -> execute sooner.
+}
+
+message Request {
+    Metadata metadata = 1;
+    bytes image = 2;  // raw (width, height, 3) byte array; optional
+}
+
+message Response {
+    bytes image = 3;  // raw (width, height, 3) byte array
+}
+
+service ImGenService {
+    rpc generate_image(Request) returns (Response);
+}

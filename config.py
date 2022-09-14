@@ -1,0 +1,2 @@
+SERVER_PORT = 15423
+SERVER_LISTEN_ADDR = "localhost"
