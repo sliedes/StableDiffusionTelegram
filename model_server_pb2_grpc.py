@@ -16,8 +16,13 @@ class ImGenServiceStub(object):
         """
         self.generate_image = channel.unary_unary(
                 '/img_server.ImGenService/generate_image',
-                request_serializer=model__server__pb2.Request.SerializeToString,
-                response_deserializer=model__server__pb2.Response.FromString,
+                request_serializer=model__server__pb2.ImGenRequest.SerializeToString,
+                response_deserializer=model__server__pb2.ImGenResponse.FromString,
+                )
+        self.tokenize_prompt = channel.unary_unary(
+                '/img_server.ImGenService/tokenize_prompt',
+                request_serializer=model__server__pb2.TokenizeRequest.SerializeToString,
+                response_deserializer=model__server__pb2.TokenizeResponse.FromString,
                 )
 
 
@@ -30,13 +35,24 @@ class ImGenServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def tokenize_prompt(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_ImGenServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'generate_image': grpc.unary_unary_rpc_method_handler(
                     servicer.generate_image,
-                    request_deserializer=model__server__pb2.Request.FromString,
-                    response_serializer=model__server__pb2.Response.SerializeToString,
+                    request_deserializer=model__server__pb2.ImGenRequest.FromString,
+                    response_serializer=model__server__pb2.ImGenResponse.SerializeToString,
+            ),
+            'tokenize_prompt': grpc.unary_unary_rpc_method_handler(
+                    servicer.tokenize_prompt,
+                    request_deserializer=model__server__pb2.TokenizeRequest.FromString,
+                    response_serializer=model__server__pb2.TokenizeResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -60,7 +76,24 @@ class ImGenService(object):
             timeout=None,
             metadata=None):
         return grpc.experimental.unary_unary(request, target, '/img_server.ImGenService/generate_image',
-            model__server__pb2.Request.SerializeToString,
-            model__server__pb2.Response.FromString,
+            model__server__pb2.ImGenRequest.SerializeToString,
+            model__server__pb2.ImGenResponse.FromString,
+            options, channel_credentials,
+            insecure, call_credentials, compression, wait_for_ready, timeout, metadata)
+
+    @staticmethod
+    def tokenize_prompt(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(request, target, '/img_server.ImGenService/tokenize_prompt',
+            model__server__pb2.TokenizeRequest.SerializeToString,
+            model__server__pb2.TokenizeResponse.FromString,
             options, channel_credentials,
             insecure, call_credentials, compression, wait_for_ready, timeout, metadata)

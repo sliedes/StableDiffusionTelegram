@@ -12,46 +12,77 @@ from google.protobuf import symbol_database as _symbol_database
 _sym_db = _symbol_database.Default()
 
 
+from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12model_server.proto\x12\nimg_server\"\x97\x01\n\x08Metadata\x12\x0e\n\x06prompt\x18\x01 \x01(\t\x12\r\n\x05width\x18\x02 \x01(\x05\x12\x0e\n\x06height\x18\x03 \x01(\x05\x12\x0c\n\x04seed\x18\x04 \x01(\x05\x12\x12\n\niterations\x18\x05 \x01(\x05\x12\x10\n\x08strength\x18\x06 \x01(\x02\x12\x16\n\x0eguidance_scale\x18\x07 \x01(\x02\x12\x10\n\x08priority\x18\x08 \x01(\x02\"@\n\x07Request\x12&\n\x08metadata\x18\x01 \x01(\x0b\x32\x14.img_server.Metadata\x12\r\n\x05image\x18\x02 \x01(\x0c\"\x19\n\x08Response\x12\r\n\x05image\x18\x03 \x01(\x0c\x32K\n\x0cImGenService\x12;\n\x0egenerate_image\x12\x13.img_server.Request\x1a\x14.img_server.Responseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12model_server.proto\x12\nimg_server\x1a\x1fgoogle/protobuf/timestamp.proto\"\xbc\x01\n\x14ImGenRequestMetadata\x12\x0e\n\x06prompt\x18\x01 \x01(\t\x12\r\n\x05width\x18\x02 \x01(\x05\x12\x0e\n\x06height\x18\x03 \x01(\x05\x12\x0c\n\x04seed\x18\x04 \x01(\x05\x12\x12\n\niterations\x18\x05 \x01(\x05\x12\x10\n\x08strength\x18\x06 \x01(\x02\x12\x16\n\x0eguidance_scale\x18\x07 \x01(\x02\x12\x10\n\x08priority\x18\x08 \x01(\x05\x12\x17\n\x0ftest_no_compute\x18\t \x01(\x08\"\xf4\x01\n\x15ImGenResponseMetadata\x12\x39\n\x15request_received_time\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x39\n\x15start_processing_time\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12:\n\x16\x66inish_processing_time\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x15\n\rprompt_tokens\x18\x04 \x03(\t\x12\x12\n\nqueue_size\x18\x05 \x01(\x05\"U\n\x0cImGenRequest\x12\x36\n\x0creq_metadata\x18\x01 \x01(\x0b\x32 .img_server.ImGenRequestMetadata\x12\r\n\x05image\x18\x02 \x01(\x0c\"\x90\x01\n\rImGenResponse\x12\x36\n\x0creq_metadata\x18\x01 \x01(\x0b\x32 .img_server.ImGenRequestMetadata\x12\x38\n\rresp_metadata\x18\x02 \x01(\x0b\x32!.img_server.ImGenResponseMetadata\x12\r\n\x05image\x18\x03 \x01(\x0c\"!\n\x0fTokenizeRequest\x12\x0e\n\x06prompt\x18\x01 \x01(\t\")\n\x10TokenizeResponse\x12\x15\n\rprompt_tokens\x18\x01 \x03(\t2\xa3\x01\n\x0cImGenService\x12\x45\n\x0egenerate_image\x12\x18.img_server.ImGenRequest\x1a\x19.img_server.ImGenResponse\x12L\n\x0ftokenize_prompt\x12\x1b.img_server.TokenizeRequest\x1a\x1c.img_server.TokenizeResponseb\x06proto3')
 
 
 
-_METADATA = DESCRIPTOR.message_types_by_name['Metadata']
-_REQUEST = DESCRIPTOR.message_types_by_name['Request']
-_RESPONSE = DESCRIPTOR.message_types_by_name['Response']
-Metadata = _reflection.GeneratedProtocolMessageType('Metadata', (_message.Message,), {
-  'DESCRIPTOR' : _METADATA,
+_IMGENREQUESTMETADATA = DESCRIPTOR.message_types_by_name['ImGenRequestMetadata']
+_IMGENRESPONSEMETADATA = DESCRIPTOR.message_types_by_name['ImGenResponseMetadata']
+_IMGENREQUEST = DESCRIPTOR.message_types_by_name['ImGenRequest']
+_IMGENRESPONSE = DESCRIPTOR.message_types_by_name['ImGenResponse']
+_TOKENIZEREQUEST = DESCRIPTOR.message_types_by_name['TokenizeRequest']
+_TOKENIZERESPONSE = DESCRIPTOR.message_types_by_name['TokenizeResponse']
+ImGenRequestMetadata = _reflection.GeneratedProtocolMessageType('ImGenRequestMetadata', (_message.Message,), {
+  'DESCRIPTOR' : _IMGENREQUESTMETADATA,
   '__module__' : 'model_server_pb2'
-  # @@protoc_insertion_point(class_scope:img_server.Metadata)
+  # @@protoc_insertion_point(class_scope:img_server.ImGenRequestMetadata)
   })
-_sym_db.RegisterMessage(Metadata)
+_sym_db.RegisterMessage(ImGenRequestMetadata)
 
-Request = _reflection.GeneratedProtocolMessageType('Request', (_message.Message,), {
-  'DESCRIPTOR' : _REQUEST,
+ImGenResponseMetadata = _reflection.GeneratedProtocolMessageType('ImGenResponseMetadata', (_message.Message,), {
+  'DESCRIPTOR' : _IMGENRESPONSEMETADATA,
   '__module__' : 'model_server_pb2'
-  # @@protoc_insertion_point(class_scope:img_server.Request)
+  # @@protoc_insertion_point(class_scope:img_server.ImGenResponseMetadata)
   })
-_sym_db.RegisterMessage(Request)
+_sym_db.RegisterMessage(ImGenResponseMetadata)
 
-Response = _reflection.GeneratedProtocolMessageType('Response', (_message.Message,), {
-  'DESCRIPTOR' : _RESPONSE,
+ImGenRequest = _reflection.GeneratedProtocolMessageType('ImGenRequest', (_message.Message,), {
+  'DESCRIPTOR' : _IMGENREQUEST,
   '__module__' : 'model_server_pb2'
-  # @@protoc_insertion_point(class_scope:img_server.Response)
+  # @@protoc_insertion_point(class_scope:img_server.ImGenRequest)
   })
-_sym_db.RegisterMessage(Response)
+_sym_db.RegisterMessage(ImGenRequest)
+
+ImGenResponse = _reflection.GeneratedProtocolMessageType('ImGenResponse', (_message.Message,), {
+  'DESCRIPTOR' : _IMGENRESPONSE,
+  '__module__' : 'model_server_pb2'
+  # @@protoc_insertion_point(class_scope:img_server.ImGenResponse)
+  })
+_sym_db.RegisterMessage(ImGenResponse)
+
+TokenizeRequest = _reflection.GeneratedProtocolMessageType('TokenizeRequest', (_message.Message,), {
+  'DESCRIPTOR' : _TOKENIZEREQUEST,
+  '__module__' : 'model_server_pb2'
+  # @@protoc_insertion_point(class_scope:img_server.TokenizeRequest)
+  })
+_sym_db.RegisterMessage(TokenizeRequest)
+
+TokenizeResponse = _reflection.GeneratedProtocolMessageType('TokenizeResponse', (_message.Message,), {
+  'DESCRIPTOR' : _TOKENIZERESPONSE,
+  '__module__' : 'model_server_pb2'
+  # @@protoc_insertion_point(class_scope:img_server.TokenizeResponse)
+  })
+_sym_db.RegisterMessage(TokenizeResponse)
 
 _IMGENSERVICE = DESCRIPTOR.services_by_name['ImGenService']
 if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
-  _METADATA._serialized_start=35
-  _METADATA._serialized_end=186
-  _REQUEST._serialized_start=188
-  _REQUEST._serialized_end=252
-  _RESPONSE._serialized_start=254
-  _RESPONSE._serialized_end=279
-  _IMGENSERVICE._serialized_start=281
-  _IMGENSERVICE._serialized_end=356
+  _IMGENREQUESTMETADATA._serialized_start=68
+  _IMGENREQUESTMETADATA._serialized_end=256
+  _IMGENRESPONSEMETADATA._serialized_start=259
+  _IMGENRESPONSEMETADATA._serialized_end=503
+  _IMGENREQUEST._serialized_start=505
+  _IMGENREQUEST._serialized_end=590
+  _IMGENRESPONSE._serialized_start=593
+  _IMGENRESPONSE._serialized_end=737
+  _TOKENIZEREQUEST._serialized_start=739
+  _TOKENIZEREQUEST._serialized_end=772
+  _TOKENIZERESPONSE._serialized_start=774
+  _TOKENIZERESPONSE._serialized_end=815
+  _IMGENSERVICE._serialized_start=818
+  _IMGENSERVICE._serialized_end=981
 # @@protoc_insertion_point(module_scope)

@@ -1,7 +1,11 @@
 syntax = "proto3";
 package img_server;
 
-message Metadata {
+import "google/protobuf/timestamp.proto";
+
+// TODO: tokenized prompt input; CLIP embedding input; prompt weighting
+
+message ImGenRequestMetadata {
     string prompt = 1;
     int32 width = 2;
     int32 height = 3;
@@ -9,18 +13,38 @@ message Metadata {
     int32 iterations = 5;
     float strength = 6;
     float guidance_scale = 7;
-    float priority = 8;  // request priority; default = 100. Higher number -> execute sooner.
+    int32 priority = 8;  // request priority. Higher number -> execute sooner.
+    bool test_no_compute = 9;  // set to true to skip the expensive parts (for testing)
 }
 
-message Request {
-    Metadata metadata = 1;
-    bytes image = 2;  // raw (width, height, 3) byte array; optional
+message ImGenResponseMetadata {
+    google.protobuf.Timestamp request_received_time = 1;
+    google.protobuf.Timestamp start_processing_time = 2;
+    google.protobuf.Timestamp finish_processing_time = 3;
+    repeated string prompt_tokens = 4;  // Can be used to detect if the prompt was cut
+    int32 queue_size = 5;  // Worker queue size just before enqueueing
 }
 
-message Response {
-    bytes image = 3;  // raw (width, height, 3) byte array
+message ImGenRequest {
+    ImGenRequestMetadata req_metadata = 1;
+    bytes image = 2;  // raw (width, height, 3) float array; optional. TODO: more formats
+}
+
+message ImGenResponse {
+    ImGenRequestMetadata req_metadata = 1;
+    ImGenResponseMetadata resp_metadata = 2;
+    bytes image = 3;  // raw (width, height, 3) float array. TODO: more formats
+}
+
+message TokenizeRequest {
+    string prompt = 1;
+}
+
+message TokenizeResponse {
+    repeated string prompt_tokens = 1;
 }
 
 service ImGenService {
-    rpc generate_image(Request) returns (Response);
+    rpc generate_image(ImGenRequest) returns (ImGenResponse);
+    rpc tokenize_prompt(TokenizeRequest) returns (TokenizeResponse);
 }
