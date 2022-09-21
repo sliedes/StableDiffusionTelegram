@@ -129,6 +129,9 @@ class GPUWorker:
                     )
                 resp.resp_metadata.finish_processing_time.GetCurrentTime()
                 resp.image = im.tobytes()
+                logger.debug(
+                    "_w_worker_main: Got image of {} bytes, shape={}, dtype={}", len(resp.image), im.shape, im.dtype
+                )
                 # TODO: prompt_tokens
                 self._eventloop.call_soon_threadsafe(rqitem.future.set_result, resp)
             except Exception as e:
@@ -227,13 +230,21 @@ class ModelServicer(model_server_pb2_grpc.ImGenServiceServicer):
         return await self.worker.tokenize_prompt(request)
 
 
-async def serve():
+@logger.catch
+async def start_server(endpoint: Optional[str]) -> grpc.aio.Server:
+    logger.info("start_server: endpoint={}", endpoint)
     server = grpc.aio.server()
     model_server_pb2_grpc.add_ImGenServiceServicer_to_server(ModelServicer(GPUWorker()), server)
-    endpoint = f"{config.SERVER_LISTEN_ADDR}:{config.SERVER_PORT}"
+    endpoint = endpoint or f"{config.SERVER_LISTEN_ADDR}:{config.SERVER_PORT}"
     logger.info("Listening to {}", endpoint)
     server.add_insecure_port(endpoint)
     await server.start()
+    return server
+
+
+@logger.catch
+async def serve(endpoint: Optional[str]) -> None:
+    server = await start_server()
     await server.wait_for_termination()
 
 
