@@ -15,16 +15,24 @@ _sym_db = _symbol_database.Default()
 from google.protobuf import timestamp_pb2 as google_dot_protobuf_dot_timestamp__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12model_server.proto\x12\nimg_server\x1a\x1fgoogle/protobuf/timestamp.proto\"\xbc\x01\n\x14ImGenRequestMetadata\x12\x0e\n\x06prompt\x18\x01 \x01(\t\x12\r\n\x05width\x18\x02 \x01(\x05\x12\x0e\n\x06height\x18\x03 \x01(\x05\x12\x0c\n\x04seed\x18\x04 \x01(\x05\x12\x12\n\niterations\x18\x05 \x01(\x05\x12\x10\n\x08strength\x18\x06 \x01(\x02\x12\x16\n\x0eguidance_scale\x18\x07 \x01(\x02\x12\x10\n\x08priority\x18\x08 \x01(\x05\x12\x17\n\x0ftest_no_compute\x18\t \x01(\x08\"\xf4\x01\n\x15ImGenResponseMetadata\x12\x39\n\x15request_received_time\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x39\n\x15start_processing_time\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12:\n\x16\x66inish_processing_time\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x15\n\rprompt_tokens\x18\x04 \x03(\t\x12\x12\n\nqueue_size\x18\x05 \x01(\x05\"U\n\x0cImGenRequest\x12\x36\n\x0creq_metadata\x18\x01 \x01(\x0b\x32 .img_server.ImGenRequestMetadata\x12\r\n\x05image\x18\x02 \x01(\x0c\"\x90\x01\n\rImGenResponse\x12\x36\n\x0creq_metadata\x18\x01 \x01(\x0b\x32 .img_server.ImGenRequestMetadata\x12\x38\n\rresp_metadata\x18\x02 \x01(\x0b\x32!.img_server.ImGenResponseMetadata\x12\r\n\x05image\x18\x03 \x01(\x0c\"!\n\x0fTokenizeRequest\x12\x0e\n\x06prompt\x18\x01 \x01(\t\")\n\x10TokenizeResponse\x12\x15\n\rprompt_tokens\x18\x01 \x03(\t2\xa3\x01\n\x0cImGenService\x12\x45\n\x0egenerate_image\x12\x18.img_server.ImGenRequest\x1a\x19.img_server.ImGenResponse\x12L\n\x0ftokenize_prompt\x12\x1b.img_server.TokenizeRequest\x1a\x1c.img_server.TokenizeResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x12model_server.proto\x12\nimg_server\x1a\x1fgoogle/protobuf/timestamp.proto\"C\n\x05Image\x12\r\n\x05width\x18\x01 \x01(\x05\x12\x0e\n\x06height\x18\x02 \x01(\x05\x12\r\n\x05\x64type\x18\x03 \x01(\t\x12\x0c\n\x04\x64\x61ta\x18\x04 \x01(\x0c\"\xbc\x01\n\x14ImGenRequestMetadata\x12\x0e\n\x06prompt\x18\x01 \x01(\t\x12\r\n\x05width\x18\x02 \x01(\x05\x12\x0e\n\x06height\x18\x03 \x01(\x05\x12\x0c\n\x04seed\x18\x04 \x01(\x05\x12\x12\n\niterations\x18\x05 \x01(\x05\x12\x10\n\x08strength\x18\x06 \x01(\x02\x12\x16\n\x0eguidance_scale\x18\x07 \x01(\x02\x12\x10\n\x08priority\x18\x08 \x01(\x05\x12\x17\n\x0ftest_no_compute\x18\t \x01(\x08\"\xf4\x01\n\x15ImGenResponseMetadata\x12\x39\n\x15request_received_time\x18\x01 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x39\n\x15start_processing_time\x18\x02 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12:\n\x16\x66inish_processing_time\x18\x03 \x01(\x0b\x32\x1a.google.protobuf.Timestamp\x12\x15\n\rprompt_tokens\x18\x04 \x03(\t\x12\x12\n\nqueue_size\x18\x05 \x01(\x05\"w\n\x0cImGenRequest\x12\x36\n\x0creq_metadata\x18\x01 \x01(\x0b\x32 .img_server.ImGenRequestMetadata\x12 \n\x05image\x18\x02 \x01(\x0b\x32\x11.img_server.Image\x12\r\n\x05\x64type\x18\x03 \x01(\t\"\xa3\x01\n\rImGenResponse\x12\x36\n\x0creq_metadata\x18\x01 \x01(\x0b\x32 .img_server.ImGenRequestMetadata\x12\x38\n\rresp_metadata\x18\x02 \x01(\x0b\x32!.img_server.ImGenResponseMetadata\x12 \n\x05image\x18\x03 \x01(\x0b\x32\x11.img_server.Image\"!\n\x0fTokenizeRequest\x12\x0e\n\x06prompt\x18\x01 \x01(\t\")\n\x10TokenizeResponse\x12\x15\n\rprompt_tokens\x18\x01 \x03(\t2\xa3\x01\n\x0cImGenService\x12\x45\n\x0egenerate_image\x12\x18.img_server.ImGenRequest\x1a\x19.img_server.ImGenResponse\x12L\n\x0ftokenize_prompt\x12\x1b.img_server.TokenizeRequest\x1a\x1c.img_server.TokenizeResponseb\x06proto3')
 
 
 
+_IMAGE = DESCRIPTOR.message_types_by_name['Image']
 _IMGENREQUESTMETADATA = DESCRIPTOR.message_types_by_name['ImGenRequestMetadata']
 _IMGENRESPONSEMETADATA = DESCRIPTOR.message_types_by_name['ImGenResponseMetadata']
 _IMGENREQUEST = DESCRIPTOR.message_types_by_name['ImGenRequest']
 _IMGENRESPONSE = DESCRIPTOR.message_types_by_name['ImGenResponse']
 _TOKENIZEREQUEST = DESCRIPTOR.message_types_by_name['TokenizeRequest']
 _TOKENIZERESPONSE = DESCRIPTOR.message_types_by_name['TokenizeResponse']
+Image = _reflection.GeneratedProtocolMessageType('Image', (_message.Message,), {
+  'DESCRIPTOR' : _IMAGE,
+  '__module__' : 'model_server_pb2'
+  # @@protoc_insertion_point(class_scope:img_server.Image)
+  })
+_sym_db.RegisterMessage(Image)
+
 ImGenRequestMetadata = _reflection.GeneratedProtocolMessageType('ImGenRequestMetadata', (_message.Message,), {
   'DESCRIPTOR' : _IMGENREQUESTMETADATA,
   '__module__' : 'model_server_pb2'
@@ -71,18 +79,20 @@ _IMGENSERVICE = DESCRIPTOR.services_by_name['ImGenService']
 if _descriptor._USE_C_DESCRIPTORS == False:
 
   DESCRIPTOR._options = None
-  _IMGENREQUESTMETADATA._serialized_start=68
-  _IMGENREQUESTMETADATA._serialized_end=256
-  _IMGENRESPONSEMETADATA._serialized_start=259
-  _IMGENRESPONSEMETADATA._serialized_end=503
-  _IMGENREQUEST._serialized_start=505
-  _IMGENREQUEST._serialized_end=590
-  _IMGENRESPONSE._serialized_start=593
-  _IMGENRESPONSE._serialized_end=737
-  _TOKENIZEREQUEST._serialized_start=739
-  _TOKENIZEREQUEST._serialized_end=772
-  _TOKENIZERESPONSE._serialized_start=774
-  _TOKENIZERESPONSE._serialized_end=815
-  _IMGENSERVICE._serialized_start=818
-  _IMGENSERVICE._serialized_end=981
+  _IMAGE._serialized_start=67
+  _IMAGE._serialized_end=134
+  _IMGENREQUESTMETADATA._serialized_start=137
+  _IMGENREQUESTMETADATA._serialized_end=325
+  _IMGENRESPONSEMETADATA._serialized_start=328
+  _IMGENRESPONSEMETADATA._serialized_end=572
+  _IMGENREQUEST._serialized_start=574
+  _IMGENREQUEST._serialized_end=693
+  _IMGENRESPONSE._serialized_start=696
+  _IMGENRESPONSE._serialized_end=859
+  _TOKENIZEREQUEST._serialized_start=861
+  _TOKENIZEREQUEST._serialized_end=894
+  _TOKENIZERESPONSE._serialized_start=896
+  _TOKENIZERESPONSE._serialized_end=937
+  _IMGENSERVICE._serialized_start=940
+  _IMGENSERVICE._serialized_end=1103
 # @@protoc_insertion_point(module_scope)

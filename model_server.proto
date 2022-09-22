@@ -5,6 +5,13 @@ import "google/protobuf/timestamp.proto";
 
 // TODO: tokenized prompt input; CLIP embedding input; prompt weighting
 
+message Image {
+    int32 width = 1;
+    int32 height = 2;
+    string dtype = 3;
+    bytes data = 4;
+}
+
 message ImGenRequestMetadata {
     string prompt = 1;
     int32 width = 2;
@@ -27,13 +34,14 @@ message ImGenResponseMetadata {
 
 message ImGenRequest {
     ImGenRequestMetadata req_metadata = 1;
-    bytes image = 2;  // raw (width, height, 3) float array; optional. TODO: more formats
+    Image image = 2;
+    string dtype = 3;
 }
 
 message ImGenResponse {
     ImGenRequestMetadata req_metadata = 1;
     ImGenResponseMetadata resp_metadata = 2;
-    bytes image = 3;  // raw (width, height, 3) float array. TODO: more formats
+    Image image = 3;
 }
 
 message TokenizeRequest {

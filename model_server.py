@@ -8,7 +8,8 @@ import numpy as np
 
 # from concurrent.futures import ThreadPoolExecutor
 from typing import Tuple, Optional, Any
-from io import BytesIO
+
+import PIL
 
 from my_logging import logger
 
@@ -27,6 +28,7 @@ from model_server_pb2 import (
     ImGenResponse,
     TokenizeResponse,
     TokenizeRequest,
+    Image,
 )
 from google.protobuf.timestamp_pb2 import Timestamp
 
@@ -41,7 +43,7 @@ def _dummy_checker(images, **kwargs):
 # Wrapper for requests to make them compatible with PriorityQueue
 @dataclass(order=True)
 class RequestQueueItem:
-    request: ImGenRequest = field(compare=False)
+    request: Optional[ImGenRequest] = field(compare=False)  # None requests stopping worker
     response: ImGenResponse = field(compare=False)  # some fields prepopulated when inserted
     future: Optional[asyncio.Future[ImGenResponse]] = field(compare=False)
     priority: int
@@ -69,6 +71,13 @@ class GPUWorker:
         self._a_request_queue: asyncio.PriorityQueue[RequestQueueItem] = asyncio.PriorityQueue()
         self._eventloop = asyncio.get_event_loop()
         self._start_worker_task = asyncio.create_task(self._start_worker(), name="_start_worker")
+
+    @logger.catch
+    async def stop(self, stop_prio: int = 0) -> None:
+        logger.debug("stop called")
+        sentinel = RequestQueueItem(request=None, response=ImGenResponse(), future=None, priority=stop_prio)
+        self._a_request_queue.put_nowait(sentinel)
+        await asyncio.to_thread(self._thread.join)  # spawning a thread to join a thread feels wrong...
 
     @logger.catch
     async def _start_worker(self) -> None:
@@ -110,13 +119,20 @@ class GPUWorker:
                 rqitem = asyncio.run_coroutine_threadsafe(self._a_request_queue.get(), self._eventloop).result()
                 logger.debug("Worker received request with priority {}", rqitem.priority)
                 req = rqitem.request
+                if req is None:
+                    # Sentinel, quit
+                    logger.debug("Worker received sentinel, quitting.")
+                    return
                 meta = req.req_metadata
                 resp = rqitem.response
                 resp.resp_metadata.start_processing_time.GetCurrentTime()
                 if meta.test_no_compute:
-                    im = np.ndarray((0, 0), dtype=np.float32)
+                    im = np.ndarray((0, 0), dtype=np.float16)
                     prompt = ""
                 else:
+                    photo = b""
+                    if req.HasField("image"):
+                        photo = req.image.data
                     im, prompt = self._w_generate_image(
                         prompt=meta.prompt,
                         seed=meta.seed,
@@ -125,12 +141,18 @@ class GPUWorker:
                         num_inference_steps=meta.iterations,
                         strength=meta.strength,
                         guidance_scale=meta.guidance_scale,
-                        photo=req.image,
+                        photo=photo,
                     )
                 resp.resp_metadata.finish_processing_time.GetCurrentTime()
-                resp.image = im.tobytes()
+                resp.image.data = im.tobytes()
+                resp.image.width = im.shape[0]  # TODO: check that width and height are this way...
+                resp.image.height = im.shape[1]
+                resp.image.dtype = "B"
                 logger.debug(
-                    "_w_worker_main: Got image of {} bytes, shape={}, dtype={}", len(resp.image), im.shape, im.dtype
+                    "_w_worker_main: Got image of {} bytes, shape={}, dtype={}",
+                    len(resp.image.data),
+                    im.shape,
+                    im.dtype,
                 )
                 # TODO: prompt_tokens
                 self._eventloop.call_soon_threadsafe(rqitem.future.set_result, resp)
@@ -152,21 +174,20 @@ class GPUWorker:
         logger.info("generate_image (photo={}): {}", bool(photo), prompt)
         generator = torch.cuda.manual_seed_all(seed)
 
-        # TODO: Make img2img work
-        photo = b""
-
         if photo:
             self._a_pipe.to("cpu")
             self._a_img2imgpipe.to("cuda")
             # TODO: float buffer
-            init_image = Image.open(BytesIO(photo)).convert("RGB")
+            init_image = PIL.Image.fromarray(np.frombuffer(photo, dtype="B").reshape((width, height, 3)), mode="RGB")
             init_image = init_image.resize((height, width))
-            init_image = preprocess(init_image)
+            init_image = preprocess(init_image).half()
             with autocast("cuda"):
                 image = self._a_img2imgpipe(
                     prompt=[prompt],
                     init_image=init_image,
                     generator=generator,
+                    height=height,
+                    width=width,
                     strength=strength,
                     guidance_scale=guidance_scale,
                     num_inference_steps=num_inference_steps,
@@ -207,7 +228,7 @@ class GPUWorker:
 
     @logger.catch
     async def generate_image(self, request: ImGenRequest) -> ImGenResponse:
-        logger.debug("generate_image (img2img={}): {}", bool(request.image), request.req_metadata.prompt)
+        logger.debug("generate_image (img2img={}): {}", request.HasField("image"), request.req_metadata.prompt)
         return await self._generate_image_via_queue(request)
 
     @logger.catch
@@ -217,12 +238,35 @@ class GPUWorker:
         return TokenizeResponse(prompt_tokens=self._a_pipe.tokenizer.tokenize(request.prompt))
 
 
+def _assert_has_field(context: grpc.aio.ServicerContext, msg: Any, field: str) -> None:
+    if not msg.HasField(field):
+        context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"field `{field}` is mandatory")
+
+
 class ModelServicer(model_server_pb2_grpc.ImGenServiceServicer):
     def __init__(self, worker: GPUWorker):
         self.worker = worker
 
     @logger.catch
     async def generate_image(self, request: ImGenRequest, context: grpc.aio.ServicerContext) -> ImGenResponse:
+        # validate request
+        _assert_has_field(context, request, "req_metadata")
+        if request.HasField("image"):
+            if request.image.dtype != "B":
+                # TODO: handle different dtypes, e.g. convert them here
+                context.abort(grpc.StatusCode.UNIMPLEMENTED, "non-RGB8 (B) dtypes are not implemented")
+            if request.image.width != env.WIDTH or request.image.height != env.HEIGHT:
+                context.abort(
+                    grpc.StatusCode.INVALID_ARGUMENT,
+                    f"width and height must currently be the configured {env.WIDTH} and {env.HEIGHT}",
+                )
+            exp_len = request.image.width * request.image.height * 3
+            if len(request.image.data) != exp_len:
+                context.abort(
+                    grpc.StatusCode.INVALID_ARGUMENT,
+                    f"Expected {exp_len} bytes of image data (w*h*3 bytes), but got {len(request.image.data)} bytes",
+                )
+
         return await self.worker.generate_image(request)
 
     @logger.catch
