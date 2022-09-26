@@ -4,6 +4,7 @@ import sys
 from loguru import logger
 
 
+# from https://stackoverflow.com/a/72735401
 class InterceptHandler(logging.Handler):
     """
     Add logging handler to augment python stdlib logging.
@@ -20,7 +21,7 @@ class InterceptHandler(logging.Handler):
         except ValueError:
             level = record.levelno
 
-        # Find caller from where originated the logged message.
+        # Find caller from where the logged message originated.
         frame, depth = sys._getframe(6), 6
         while frame and frame.f_code.co_filename == logging.__file__:
             frame = frame.f_back
