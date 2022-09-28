@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import field
 import threading
 
 import numpy as np
 
 # from concurrent.futures import ThreadPoolExecutor
 from typing import Tuple, Optional, Any
+
+from pydantic import validate_arguments
+from pydantic.dataclasses import dataclass
 
 import PIL
 
@@ -41,7 +44,7 @@ def _dummy_checker(images, **kwargs):
 
 
 # Wrapper for requests to make them compatible with PriorityQueue
-@dataclass(order=True)
+@dataclass(order=True, config=dict(arbitrary_types_allowed=True))
 class RequestQueueItem:
     request: Optional[ImGenRequest] = field(compare=False)  # None requests stopping worker
     response: ImGenResponse = field(compare=False)  # some fields prepopulated when inserted
@@ -73,6 +76,7 @@ class GPUWorker:
         self._start_worker_task = asyncio.create_task(self._start_worker(), name="_start_worker")
 
     @logger.catch
+    @validate_arguments
     async def stop(self, stop_prio: int = 0) -> None:
         logger.debug("stop called")
         sentinel = RequestQueueItem(request=None, response=ImGenResponse(), future=None, priority=stop_prio)
@@ -210,6 +214,7 @@ class GPUWorker:
         return image, ""
 
     @logger.catch
+    @validate_arguments(config=dict(arbitrary_types_allowed=True))
     async def _generate_image_via_queue(self, request: ImGenRequest) -> ImGenResponse:
         response = ImGenResponse(
             req_metadata=request.req_metadata,
@@ -227,17 +232,20 @@ class GPUWorker:
         return await item.future
 
     @logger.catch
+    @validate_arguments(config=dict(arbitrary_types_allowed=True))
     async def generate_image(self, request: ImGenRequest) -> ImGenResponse:
         logger.debug("generate_image (img2img={}): {}", request.HasField("image"), request.req_metadata.prompt)
         return await self._generate_image_via_queue(request)
 
     @logger.catch
+    @validate_arguments(config=dict(arbitrary_types_allowed=True))
     async def tokenize_prompt(self, request: TokenizeRequest) -> TokenizeResponse:
         logger.debug("tokenize_prompt: {}", request.prompt)
         await self._start_worker_task
         return TokenizeResponse(prompt_tokens=self._a_pipe.tokenizer.tokenize(request.prompt))
 
 
+@validate_arguments(config=dict(arbitrary_types_allowed=True))
 def _assert_has_field(context: grpc.aio.ServicerContext, msg: Any, field: str) -> None:
     if not msg.HasField(field):
         context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"field `{field}` is mandatory")
@@ -248,6 +256,7 @@ class ModelServicer(model_server_pb2_grpc.ImGenServiceServicer):
         self.worker = worker
 
     @logger.catch
+    @validate_arguments(config=dict(arbitrary_types_allowed=True))
     async def generate_image(self, request: ImGenRequest, context: grpc.aio.ServicerContext) -> ImGenResponse:
         # validate request
         _assert_has_field(context, request, "req_metadata")
@@ -270,11 +279,13 @@ class ModelServicer(model_server_pb2_grpc.ImGenServiceServicer):
         return await self.worker.generate_image(request)
 
     @logger.catch
+    @validate_arguments(config=dict(arbitrary_types_allowed=True))
     async def tokenize_prompt(self, request: TokenizeRequest, context: grpc.aio.ServicerContext) -> TokenizeResponse:
         return await self.worker.tokenize_prompt(request)
 
 
 @logger.catch
+@validate_arguments
 async def start_server(endpoint: Optional[str]) -> grpc.aio.Server:
     logger.info("start_server: endpoint={}", endpoint)
     server = grpc.aio.server()
@@ -287,6 +298,7 @@ async def start_server(endpoint: Optional[str]) -> grpc.aio.Server:
 
 
 @logger.catch
+@validate_arguments
 async def serve(endpoint: Optional[str]) -> None:
     server = await start_server()
     await server.wait_for_termination()

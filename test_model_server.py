@@ -7,6 +7,7 @@ from unittest.mock import Mock, ANY
 
 import pytest
 from pytest_mock import MockerFixture
+from grpc.aio import ServicerContext
 
 import numpy as np
 
@@ -70,7 +71,7 @@ async def servicer(mocker: MockerFixture) -> Iterable[ModelServicer]:
 
 async def test_tokenize(servicer: ModelServicer):
     servicer.worker._a_pipe.tokenizer.tokenize.return_value = ["foo"]
-    resp = await servicer.tokenize_prompt(TokenizeRequest(prompt="Hello, world!"), context=Mock())
+    resp = await servicer.tokenize_prompt(TokenizeRequest(prompt="Hello, world!"), context=Mock(spec=ServicerContext))
     assert resp.prompt_tokens == ["foo"]
 
 
@@ -85,7 +86,7 @@ def check_image(im: Image, expect_dims: Optional[int] = None):
 async def test_txt2img_compute(servicer: ModelServicer):
     req = make_ImGenRequest(prompt="A ball on a floor", test_no_compute=False, iterations=2)
     servicer.worker._a_pipe.return_value = {"sample": [np.zeros((env.WIDTH, env.HEIGHT, 3), dtype=np.float16)]}
-    resp = await servicer.generate_image(req, context=Mock())
+    resp = await servicer.generate_image(req, context=Mock(spec=ServicerContext))
     servicer.worker._a_pipe.assert_called_once_with(
         **dict(
             prompt=[req.req_metadata.prompt],
@@ -104,7 +105,7 @@ async def test_txt2img_compute(servicer: ModelServicer):
 
 async def test_txt2img_nocompute(servicer: ModelServicer):
     req = make_ImGenRequest(prompt="A ball on a floor", test_no_compute=True, iterations=2)
-    resp = await servicer.generate_image(req, context=Mock())
+    resp = await servicer.generate_image(req, context=Mock(spec=ServicerContext))
     servicer.worker._a_pipe.assert_not_called()
     assert resp.req_metadata == req.req_metadata
     check_image(resp.image, 0)
@@ -114,7 +115,7 @@ async def test_img2img_compute(servicer: ModelServicer):
     req = make_ImGenRequest(prompt="A ball on a floor", test_no_compute=False, iterations=2)
     req.image.CopyFrom(_Image_template)
     servicer.worker._a_img2imgpipe.return_value = {"sample": [np.zeros((env.WIDTH, env.HEIGHT, 3), dtype=np.float16)]}
-    resp = await servicer.generate_image(req, context=Mock())
+    resp = await servicer.generate_image(req, context=Mock(spec=ServicerContext))
     servicer.worker._a_img2imgpipe.assert_called_once_with(
         **dict(
             prompt=[req.req_metadata.prompt],
