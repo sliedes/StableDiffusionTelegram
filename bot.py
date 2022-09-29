@@ -22,32 +22,10 @@ import env
 # Interpret messages starting with this string as requests to us
 COMMAND = "!kuva "
 
+UPDATE_MODEL = False
+REPORT_TORCH_DUPLICATES = True
+
 gpu_lock = asyncio.Lock()
-
-# load the text2img pipeline
-logger.info("Loading text2img pipeline")
-pipe = StableDiffusionPipeline.from_pretrained(
-    env.MODEL_DATA, revision=env.MODEL_REVISION, torch_dtype=env.TORCH_DTYPE, use_auth_token=env.HF_AUTH_TOKEN
-)
-logger.info("Loaded text2img pipeline")
-pipe = pipe.to("cpu")
-
-# load the img2img pipeline
-logger.info("Loading img2img pipeline")
-img2imgPipe = StableDiffusionImg2ImgPipeline.from_pretrained(
-    env.MODEL_DATA, revision=env.MODEL_REVISION, torch_dtype=env.TORCH_DTYPE, use_auth_token=env.HF_AUTH_TOKEN
-)
-logger.info("Loaded img2img pipeline")
-img2imgPipe = img2imgPipe.to("cpu")
-
-# disable safety checker if wanted
-def dummy_checker(images, **kwargs):
-    return images, False
-
-
-if not env.SAFETY_CHECKER:
-    pipe.safety_checker = dummy_checker
-    img2imgPipe.safety_checker = dummy_checker
 
 
 def image_to_bytes(image) -> BytesIO:
@@ -86,6 +64,8 @@ def parse_seed(prompt: str) -> Tuple[Optional[int], str]:
 
 
 async def generate_image(
+    pipe: StableDiffusionPipeline,
+    img2imgPipe: StableDiffusionImg2ImgPipeline,
     prompt: str,
     seed: Optional[int] = None,
     height: int = env.HEIGHT,
@@ -101,11 +81,10 @@ async def generate_image(
         seed, prompt = parse_seed(prompt)
         if seed is None or ignore_seed:
             seed = random.randint(1, 100000)
-        generator = torch.cuda.manual_seed_all(seed)
+        generator = torch.Generator(device="cuda")
+        generator.manual_seed(seed)
 
         if photo is not None:
-            pipe.to("cpu")
-            img2imgPipe.to("cuda")
             init_image = Image.open(BytesIO(photo)).convert("RGB")
             init_image = init_image.resize((height, width))
             init_image = preprocess(init_image)
@@ -119,8 +98,6 @@ async def generate_image(
                     num_inference_steps=num_inference_steps,
                 )["sample"][0]
         else:
-            pipe.to("cuda")
-            img2imgPipe.to("cpu")
             with autocast("cuda"):
                 image = pipe(
                     prompt=[prompt],
@@ -135,12 +112,14 @@ async def generate_image(
 
 
 def perms_ok(update: Update) -> bool:
-    if update.effective_user.id != env.ADMIN_ID and update.message.chat_id != env.CHAT_ID:
-        logger.warning("Denied: user_id={}, chat_id={}", update.effective_user.id, update.message.chat_id)
+    assert update.effective_user is not None
+    assert update.effective_chat is not None
+    if update.effective_user.id != env.ADMIN_ID and update.effective_chat.id != env.CHAT_ID:
+        logger.warning("Denied: user_id={}, chat_id={}", update.effective_user.id, update.effective_chat.id)
         return False
     if update.effective_user.id != env.ADMIN_ID and env.ADMIN_ONLY:
         logger.warning(
-            "Denied because of admin_only: user_id={}, chat_id={}", update.effective_user.id, update.message.chat_id
+            "Denied because of admin_only: user_id={}, chat_id={}", update.effective_user.id, update.effective_chat.id
         )
         return False
     return True
@@ -174,7 +153,7 @@ def extract_query_from_string(prompt: str) -> str:
 
 async def parse_request(update: Update, message: Message, tryagain: bool = True) -> Optional[ParsedRequest]:
     if not perms_ok(update):
-        return
+        return None
 
     logger.debug("parse_request: {}", message)
 
@@ -195,6 +174,7 @@ async def parse_request(update: Update, message: Message, tryagain: bool = True)
         msg_of_photo = message
     else:
         # It is not a photo. If it does not start with COMMAND, it's not for us.
+        assert message.text is not None
         prompt = message.text
         if not prompt.startswith(COMMAND):
             logger.debug("Not for us: {}", prompt)
@@ -215,77 +195,151 @@ async def parse_request(update: Update, message: Message, tryagain: bool = True)
     return ParsedRequest(prompt=extract_query_from_string(prompt), photo=photo, tryagain=tryagain)
 
 
-async def handle_update(
-    update: Update, context: ContextTypes.DEFAULT_TYPE, message: Optional[Message] = None, tryagain: bool = True
-) -> None:
-    if message is None:
-        message = update.message
+class Bot:
+    pipe: StableDiffusionPipeline
+    img2imgPipe: StableDiffusionImg2ImgPipeline
 
-    req = await parse_request(update, message, tryagain)
-    if req is None:
-        return
+    def __init__(self):
+        self.pipe, self.img2imgPipe = load_models()
 
-    progress_msg = await message.reply_text("Generating image...", reply_to_message_id=message.message_id)
-    im, seed, prompt = await generate_image(prompt=req.prompt, photo=req.photo)
-    await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
-    await context.bot.send_photo(
-        message.chat_id,
-        image_to_bytes(im),
-        caption=f'"{prompt}" (Seed: {seed})',
-        reply_markup=get_try_again_markup(tryagain=req.tryagain),
-        reply_to_message_id=message.message_id,
+    async def handle_update(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+        message: Optional[Message] = None,
+        tryagain: bool = True,
+    ) -> None:
+        if message is None:
+            message = update.message
+
+        assert message is not None
+        req = await parse_request(update, message, tryagain)
+        if req is None:
+            return
+
+        progress_msg = await message.reply_text("Generating image...", reply_to_message_id=message.message_id)
+        im, seed, prompt = await generate_image(
+            pipe=self.pipe, img2imgPipe=self.img2imgPipe, prompt=req.prompt, photo=req.photo
+        )
+        await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
+        await context.bot.send_photo(
+            message.chat_id,
+            image_to_bytes(im),
+            caption=f'"{prompt}" (Seed: {seed})',
+            reply_markup=get_try_again_markup(tryagain=req.tryagain),
+            reply_to_message_id=message.message_id,
+        )
+
+    async def handle_button(
+        self,
+        update: Update,
+        context: ContextTypes.DEFAULT_TYPE,
+    ) -> None:
+        query = update.callback_query
+        assert query is not None
+        assert query.message is not None
+        assert query.message.reply_to_message is not None
+        parent_message = query.message.reply_to_message
+
+        assert update.effective_chat is not None
+
+        await query.answer()
+
+        photo: Optional[bytearray] = None
+
+        if query.data == "TRYAGAIN":
+            # for Try Again, reply to the original prompt. We just re-handle the replied to message.
+            # TODO: ignore any seed.
+            logger.info("Try again: Re-handling parent.")
+            await self.handle_update(update, context, message=parent_message)
+            return
+        elif query.data != "VARIATIONS":
+            logger.error("Unknown query data: {}", query)
+            return
+
+        # for Variations, reply to the message whose button is clicked
+        reply_to = query.message.message_id
+        photo_file = await query.message.photo[-1].get_file()
+        photo = await photo_file.download_as_bytearray()
+        prompt = parent_message.text if parent_message.text is not None else parent_message.caption
+        assert prompt is not None
+        prompt = extract_query_from_string(prompt)
+        logger.info("Variations: {}", prompt)
+
+        progress_msg = await query.message.reply_text("Generating image...", reply_to_message_id=reply_to)
+        im, seed, prompt = await generate_image(
+            pipe=self.pipe, img2imgPipe=self.img2imgPipe, prompt=prompt, photo=photo, ignore_seed=True
+        )
+        await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
+        await context.bot.send_photo(
+            update.effective_chat.id,
+            image_to_bytes(im),
+            caption=f'"{prompt}" (Seed: {seed})',
+            reply_markup=get_try_again_markup(),
+            reply_to_message_id=reply_to,
+        )
+
+
+# disable safety checker if wanted
+def dummy_checker(images, **kwargs):
+    return images, False
+
+
+def load_models() -> Tuple[StableDiffusionPipeline, StableDiffusionImg2ImgPipeline]:
+    logger.info("Loading text2img pipeline")
+    if UPDATE_MODEL:
+        pipe = StableDiffusionPipeline.from_pretrained(
+            env.MODEL_DATA,
+            revision=env.MODEL_REVISION,
+            torch_dtype=env.TORCH_DTYPE,
+            use_auth_token=env.HF_AUTH_TOKEN,
+        )
+        torch.save(pipe, "text2img.pt")
+    else:
+        pipe = torch.load("text2img.pt")
+    logger.info("Loaded text2img pipeline")
+
+    img2imgPipe = StableDiffusionImg2ImgPipeline(
+        vae=pipe.vae,
+        text_encoder=pipe.text_encoder,
+        tokenizer=pipe.tokenizer,
+        unet=pipe.unet,
+        scheduler=pipe.scheduler,
+        safety_checker=pipe.safety_checker,
+        feature_extractor=pipe.feature_extractor,
     )
 
+    pipe = pipe.to("cuda")
+    img2imgPipe = img2imgPipe.to("cuda")
 
-async def handle_button(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    query = update.callback_query
-    parent_message = query.message.reply_to_message
+    if not env.SAFETY_CHECKER:
+        pipe.safety_checker = dummy_checker
+        img2imgPipe.safety_checker = dummy_checker
 
-    await query.answer()
+    return pipe, img2imgPipe
 
-    photo: Optional[bytearray] = None
 
-    if query.data == "TRYAGAIN":
-        # for Try Again, reply to the original prompt. We just re-handle the replied to message.
-        # TODO: ignore any seed.
-        logger.info("Try again: Re-handling parent.")
-        await handle_update(update, context, message=parent_message)
-        return
-    elif query.data != "VARIATIONS":
-        logger.error("Unknown query data: {}", query)
-        return
+def main():
+    bot = Bot()
 
-    # for Variations, reply to the message whose button is clicked
-    reply_to = query.message.message_id
-    photo_file = await query.message.photo[-1].get_file()
-    photo = await photo_file.download_as_bytearray()
-    prompt = parent_message.text if parent_message.text is not None else parent_message.caption
-    prompt = extract_query_from_string(prompt)
-    logger.info("Variations: {}", prompt)
+    if REPORT_TORCH_DUPLICATES:
+        import torch_duplicates
 
-    progress_msg = await query.message.reply_text("Generating image...", reply_to_message_id=reply_to)
-    im, seed, prompt = await generate_image(prompt, photo=photo, ignore_seed=True)
-    await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
-    await context.bot.send_photo(
-        update.effective_chat.id,
-        image_to_bytes(im),
-        caption=f'"{prompt}" (Seed: {seed})',
-        reply_markup=get_try_again_markup(),
-        reply_to_message_id=reply_to,
+        torch_duplicates.report_dups_in_memory(logger)
+
+    app = ApplicationBuilder().token(env.TG_TOKEN).build()
+
+    app.add_handler(
+        MessageHandler(
+            ~filters.UpdateType.EDITED_MESSAGE & ((filters.TEXT & ~filters.COMMAND) | filters.PHOTO), bot.handle_update
+        )
     )
+    app.add_handler(MessageHandler(filters.PHOTO, bot.handle_update))
+    app.add_handler(CallbackQueryHandler(bot.handle_button))
+
+    logger.info("Starting.")
+    app.run_polling(read_timeout=20)
 
 
-app = ApplicationBuilder().token(env.TG_TOKEN).build()
-
-app.add_handler(
-    MessageHandler(
-        ~filters.UpdateType.EDITED_MESSAGE & ((filters.TEXT & ~filters.COMMAND) | filters.PHOTO), handle_update
-    )
-)
-app.add_handler(MessageHandler(filters.PHOTO, handle_update))
-app.add_handler(CallbackQueryHandler(handle_button))
-
-logger.info("Starting.")
-
-# app.run_polling()
-app.run_polling(read_timeout=20)
+if __name__ == "__main__":
+    main()

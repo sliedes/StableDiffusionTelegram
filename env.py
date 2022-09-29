@@ -16,8 +16,8 @@ WIDTH = int(os.getenv("WIDTH", "512"))
 NUM_INFERENCE_STEPS = int(os.getenv("NUM_INFERENCE_STEPS", "100"))
 STRENGTH = float(os.getenv("STRENGTH", "0.75"))
 GUIDANCE_SCALE = float(os.getenv("GUIDANCE_SCALE", "7.5"))
-ADMIN_ID = int(os.getenv("ADMIN_ID"))
-CHAT_ID = int(os.getenv("CHAT_ID"))
+ADMIN_ID = int(os.getenv("ADMIN_ID"))  # type: ignore[arg-type]
+CHAT_ID = int(os.getenv("CHAT_ID"))  # type: ignore[arg-type]
 ADMIN_ONLY = os.getenv("ADMIN_ONLY", "false").lower() == "true"
 
 MODEL_REVISION = "fp16" if LOW_VRAM_MODE else None
