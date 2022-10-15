@@ -1,2 +1,6 @@
 __pycache__/
 .env
+*.pt
+.dmypy.json
+launch.json
+settings.json

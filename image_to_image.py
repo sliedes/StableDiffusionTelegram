@@ -1,37 +1,53 @@
 import inspect
-from typing import List, Optional, Union
+import typing
+from typing import Any
 
 import numpy as np
-import torch
-
 import PIL
-from diffusers import AutoencoderKL, DDIMScheduler, DiffusionPipeline, PNDMScheduler, UNet2DConditionModel
+import torch
+from diffusers import (
+    AutoencoderKL,
+    DDIMScheduler,
+    DiffusionPipeline,
+    PNDMScheduler,
+    UNet2DConditionModel,
+)
 from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
 from tqdm.auto import tqdm
-from transformers import CLIPFeatureExtractor, CLIPTextModel, CLIPTokenizer
+from transformers import (  # type: ignore[attr-defined]
+    CLIPFeatureExtractor,
+    CLIPTextModel,
+    CLIPTokenizer,
+)
+
+if typing.TYPE_CHECKING:
+    from mypy_nop_decorator import typed_decorator_factory as torch_no_grad
+else:
+    torch_no_grad = torch.no_grad
 
 
 def preprocess(image: PIL.Image) -> torch.Tensor:
     w, h = image.size
-    w, h = map(lambda x: x - x % 32, (w, h))  # resize to integer multiple of 32
+    w = w - w % 32  # resize to integer multiple of 32
+    h = h - h % 32
     image = image.resize((w, h), resample=PIL.Image.LANCZOS)
     image = np.array(image).astype(np.float32) / 255.0
     image = image[None].transpose(0, 3, 1, 2)
     image = torch.from_numpy(image)
-    return 2.0 * image - 1.0
+    return 2.0 * image - 1.0  # type: ignore[no-any-return]
 
 
-class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
+class StableDiffusionImg2ImgPipeline(DiffusionPipeline):  # type: ignore[misc]
     def __init__(
         self,
         vae: AutoencoderKL,
         text_encoder: CLIPTextModel,
         tokenizer: CLIPTokenizer,
         unet: UNet2DConditionModel,
-        scheduler: Union[DDIMScheduler, PNDMScheduler],
+        scheduler: DDIMScheduler | PNDMScheduler,
         safety_checker: StableDiffusionSafetyChecker,
         feature_extractor: CLIPFeatureExtractor,
-    ):
+    ) -> None:
         super().__init__()
         scheduler = scheduler.set_format("pt")
         self.register_modules(
@@ -44,19 +60,18 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):
             feature_extractor=feature_extractor,
         )
 
-    @torch.no_grad()
+    @torch_no_grad()
     def __call__(
         self,
-        prompt: Union[str, List[str]],
+        prompt: str | list[str],
         init_image: torch.FloatTensor,
         strength: float = 0.8,
-        num_inference_steps: Optional[int] = 50,
-        guidance_scale: Optional[float] = 7.5,
-        eta: Optional[float] = 0.0,
-        generator: Optional[torch.Generator] = None,
-        output_type: Optional[str] = "pil",
-    ):
-
+        num_inference_steps: int = 50,
+        guidance_scale: float = 7.5,
+        eta: float | None = 0.0,
+        generator: torch.Generator | None = None,
+        output_type: str | None = "pil",
+    ) -> dict[str, Any]:  # FIXME better return type
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):

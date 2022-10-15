@@ -1,13 +1,10 @@
-from dataclasses import dataclass
-import torch
-import pickle
 import gc
-from dataclasses import field
-
-from typing import Sequence, DefaultDict, List
+import pickle
 from collections import defaultdict
+from dataclasses import dataclass, field
+from typing import Any, DefaultDict, List, Sequence
 
-import logging
+import torch
 
 
 def tensor_hash(x: torch.Tensor) -> int:
@@ -44,10 +41,10 @@ def find_dups(tensors: Sequence[torch.Tensor]) -> List[Duplicate]:
 
 
 def find_dups_in_memory() -> List[Duplicate]:
-    return find_dups([obj for obj in gc.get_objects() if torch.is_tensor(obj)])
+    return find_dups([obj for obj in gc.get_objects() if torch.is_tensor(obj)])  # type: ignore[no-untyped-call]
 
 
-def report_dups_in_memory(logger: logging.Logger) -> None:
+def report_dups_in_memory(logger: Any) -> None:
     dups = find_dups_in_memory()
     if not dups:
         logger.debug("No duplicate torch tensors found in memory.")

@@ -1,5 +1,6 @@
 import logging
 import sys
+from types import FrameType
 
 from loguru import logger
 
@@ -14,14 +15,15 @@ class InterceptHandler(logging.Handler):
     """
 
     @logger.catch(default=True, onerror=lambda _: sys.exit(1))
-    def emit(self, record):
+    def emit(self, record: logging.LogRecord) -> None:
         # Get corresponding Loguru level if it exists.
         try:
-            level = logger.level(record.levelname).name
+            level: str | int = logger.level(record.levelname).name
         except ValueError:
             level = record.levelno
 
         # Find caller from where the logged message originated.
+        frame: FrameType | None
         frame, depth = sys._getframe(6), 6
         while frame and frame.f_code.co_filename == logging.__file__:
             frame = frame.f_back
@@ -31,3 +33,5 @@ class InterceptHandler(logging.Handler):
 
 
 logging.basicConfig(handlers=[InterceptHandler()], level=0, force=True)
+
+__all__ = ["logger"]

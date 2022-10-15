@@ -1,23 +1,20 @@
 import asyncio
-from dataclasses import dataclass
 import random
-from io import BytesIO
-from typing import Optional, Tuple, Any
 import re
+from dataclasses import dataclass
+from io import BytesIO
+from typing import Any, Optional, Tuple
 
+import telegram
+import telegram.ext
 import torch
-from torch import autocast
-from PIL import Image
-
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, Message
-from telegram.ext import ApplicationBuilder, CallbackQueryHandler, ContextTypes, MessageHandler, filters
-
-from my_logging import logger
-
 from diffusers import StableDiffusionPipeline
-from image_to_image import StableDiffusionImg2ImgPipeline, preprocess
+from PIL import Image
+from torch import autocast  # type: ignore[attr-defined]
 
 import env
+from image_to_image import StableDiffusionImg2ImgPipeline, preprocess
+from my_logging import logger
 
 # Interpret messages starting with this string as requests to us
 COMMAND = "!kuva "
@@ -28,26 +25,26 @@ REPORT_TORCH_DUPLICATES = True
 gpu_lock = asyncio.Lock()
 
 
-def image_to_bytes(image) -> BytesIO:
+def image_to_bytes(image: Any) -> bytes:
     bio = BytesIO()
     bio.name = "image.jpeg"
     image.save(bio, "JPEG")
     bio.seek(0)
-    return bio
+    return bio.read()
 
 
-def get_try_again_markup(tryagain=True) -> InlineKeyboardMarkup:
+def get_try_again_markup(tryagain: bool = True) -> telegram.InlineKeyboardMarkup:
     if tryagain:
         keyboard = [
             [
-                InlineKeyboardButton("Try again", callback_data="TRYAGAIN"),
+                telegram.InlineKeyboardButton("Try again", callback_data="TRYAGAIN"),
             ]
         ]
     else:
         keyboard = [[]]
-    keyboard[0].append(InlineKeyboardButton("Variations", callback_data="VARIATIONS"))
+    keyboard[0].append(telegram.InlineKeyboardButton("Variations", callback_data="VARIATIONS"))
 
-    reply_markup = InlineKeyboardMarkup(keyboard)
+    reply_markup = telegram.InlineKeyboardMarkup(keyboard)
     return reply_markup
 
 
@@ -111,7 +108,7 @@ async def generate_image(
         return image, seed, prompt
 
 
-def perms_ok(update: Update) -> bool:
+def perms_ok(update: telegram.Update) -> bool:
     assert update.effective_user is not None
     assert update.effective_chat is not None
     if update.effective_user.id != env.ADMIN_ID and update.effective_chat.id != env.CHAT_ID:
@@ -151,14 +148,16 @@ def extract_query_from_string(prompt: str) -> str:
     return prompt
 
 
-async def parse_request(update: Update, message: Message, tryagain: bool = True) -> Optional[ParsedRequest]:
+async def parse_request(
+    update: telegram.Update, message: telegram.Message, tryagain: bool = True
+) -> Optional[ParsedRequest]:
     if not perms_ok(update):
         return None
 
     logger.debug("parse_request: {}", message)
 
     # If not None, take photo from this and use it as img2img source
-    msg_of_photo: Optional[Message] = None
+    msg_of_photo: Optional[telegram.Message] = None
 
     # Use this as the prompt text. Any COMMAND prefix will be removed.
     prompt = ""
@@ -199,14 +198,14 @@ class Bot:
     pipe: StableDiffusionPipeline
     img2imgPipe: StableDiffusionImg2ImgPipeline
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.pipe, self.img2imgPipe = load_models()
 
     async def handle_update(
         self,
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE,
-        message: Optional[Message] = None,
+        update: telegram.Update,
+        context: telegram.ext.ContextTypes.DEFAULT_TYPE,
+        message: Optional[telegram.Message] = None,
         tryagain: bool = True,
     ) -> None:
         if message is None:
@@ -232,8 +231,8 @@ class Bot:
 
     async def handle_button(
         self,
-        update: Update,
-        context: ContextTypes.DEFAULT_TYPE,
+        update: telegram.Update,
+        context: telegram.ext.ContextTypes.DEFAULT_TYPE,
     ) -> None:
         query = update.callback_query
         assert query is not None
@@ -281,7 +280,7 @@ class Bot:
 
 
 # disable safety checker if wanted
-def dummy_checker(images, **kwargs):
+def dummy_checker(images: Any, **kwargs: Any) -> Tuple[Any, bool]:
     return images, False
 
 
@@ -296,7 +295,7 @@ def load_models() -> Tuple[StableDiffusionPipeline, StableDiffusionImg2ImgPipeli
         )
         torch.save(pipe, "text2img.pt")
     else:
-        pipe = torch.load("text2img.pt")
+        pipe = torch.load("text2img.pt")  # type: ignore[no-untyped-call]
     logger.info("Loaded text2img pipeline")
 
     img2imgPipe = StableDiffusionImg2ImgPipeline(
@@ -319,7 +318,7 @@ def load_models() -> Tuple[StableDiffusionPipeline, StableDiffusionImg2ImgPipeli
     return pipe, img2imgPipe
 
 
-def main():
+def main() -> None:
     bot = Bot()
 
     if REPORT_TORCH_DUPLICATES:
@@ -327,15 +326,17 @@ def main():
 
         torch_duplicates.report_dups_in_memory(logger)
 
-    app = ApplicationBuilder().token(env.TG_TOKEN).build()
+    app = telegram.ext.ApplicationBuilder().token(env.TG_TOKEN).build()
 
     app.add_handler(
-        MessageHandler(
-            ~filters.UpdateType.EDITED_MESSAGE & ((filters.TEXT & ~filters.COMMAND) | filters.PHOTO), bot.handle_update
+        telegram.ext.MessageHandler(
+            ~telegram.ext.filters.UpdateType.EDITED_MESSAGE
+            & ((telegram.ext.filters.TEXT & ~telegram.ext.filters.COMMAND) | telegram.ext.filters.PHOTO),
+            bot.handle_update,
         )
     )
-    app.add_handler(MessageHandler(filters.PHOTO, bot.handle_update))
-    app.add_handler(CallbackQueryHandler(bot.handle_button))
+    app.add_handler(telegram.ext.MessageHandler(telegram.ext.filters.PHOTO, bot.handle_update))
+    app.add_handler(telegram.ext.CallbackQueryHandler(bot.handle_button))
 
     logger.info("Starting.")
     app.run_polling(read_timeout=20)

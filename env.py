@@ -1,11 +1,11 @@
 import os
 
-from dotenv import load_dotenv
 import torch
+from dotenv import load_dotenv
 
 load_dotenv()
 
-TG_TOKEN = os.getenv("TG_TOKEN")
+TG_TOKEN: str = os.getenv("TG_TOKEN")  # type: ignore[assignment]  # FIXME
 
 MODEL_DATA = os.getenv("MODEL_DATA", "CompVis/stable-diffusion-v1-4")
 LOW_VRAM_MODE = os.getenv("LOW_VRAM", "true").lower() == "true"
