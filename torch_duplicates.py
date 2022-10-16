@@ -2,7 +2,7 @@ import gc
 import pickle
 from collections import defaultdict
 from dataclasses import dataclass, field
-from typing import Any, DefaultDict, List, Sequence
+from typing import Any, DefaultDict, Sequence
 
 import torch
 
@@ -14,8 +14,8 @@ def tensor_hash(x: torch.Tensor) -> int:
 @dataclass(order=True)
 class Duplicate:
     size: int
-    indices: List[int]
-    tensors: List[torch.Tensor] = field(compare=False, repr=False, hash=False)
+    indices: list[int]
+    tensors: list[torch.Tensor] = field(compare=False, repr=False, hash=False)
 
     @property
     def count(self) -> int:
@@ -23,13 +23,13 @@ class Duplicate:
 
 
 # TODO: this does not consider possible hash collisions
-def find_dups(tensors: Sequence[torch.Tensor]) -> List[Duplicate]:
-    idx_by_hash: DefaultDict[int, List[int]] = defaultdict(lambda: [])
+def find_dups(tensors: Sequence[torch.Tensor]) -> list[Duplicate]:
+    idx_by_hash: DefaultDict[int, list[int]] = defaultdict(lambda: [])
 
     for i, t in enumerate(tensors):
         idx_by_hash[tensor_hash(t)].append(i)
 
-    dups: List[Duplicate] = []
+    dups: list[Duplicate] = []
     for idxs in idx_by_hash.values():
         if len(idxs) < 2:
             continue
@@ -40,7 +40,7 @@ def find_dups(tensors: Sequence[torch.Tensor]) -> List[Duplicate]:
     return dups
 
 
-def find_dups_in_memory() -> List[Duplicate]:
+def find_dups_in_memory() -> list[Duplicate]:
     return find_dups([obj for obj in gc.get_objects() if torch.is_tensor(obj)])  # type: ignore[no-untyped-call]
 
 

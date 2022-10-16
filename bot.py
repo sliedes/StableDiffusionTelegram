@@ -3,7 +3,7 @@ import random
 import re
 from dataclasses import dataclass
 from io import BytesIO
-from typing import Any, Optional, Tuple
+from typing import Any
 
 import telegram
 import telegram.ext
@@ -48,8 +48,8 @@ def get_try_again_markup(tryagain: bool = True) -> telegram.InlineKeyboardMarkup
     return reply_markup
 
 
-def parse_seed(prompt: str) -> Tuple[Optional[int], str]:
-    seed: Optional[int] = None
+def parse_seed(prompt: str) -> tuple[int | None, str]:
+    seed: int | None = None
     if prompt.startswith("seed:") and " " in prompt:
         seed_str, prompt = prompt.split(" ", 1)
         seed_str = seed_str.removeprefix("seed:")
@@ -64,15 +64,15 @@ async def generate_image(
     pipe: StableDiffusionPipeline,
     img2imgPipe: StableDiffusionImg2ImgPipeline,
     prompt: str,
-    seed: Optional[int] = None,
+    seed: int | None = None,
     height: int = env.HEIGHT,
     width: int = env.WIDTH,
     num_inference_steps: int = env.NUM_INFERENCE_STEPS,
     strength: float = env.STRENGTH,
     guidance_scale: float = env.GUIDANCE_SCALE,
-    photo: Optional[bytes] = None,
+    photo: bytes | None = None,
     ignore_seed: bool = False,
-) -> Tuple[Any, int, str]:
+) -> tuple[Any, int, str]:
     async with gpu_lock:
         logger.info("generate_image (photo={}): {}", photo is not None, prompt)
         seed, prompt = parse_seed(prompt)
@@ -125,7 +125,7 @@ def perms_ok(update: telegram.Update) -> bool:
 @dataclass
 class ParsedRequest:
     prompt: str
-    photo: Optional[bytearray]
+    photo: bytearray | None
     tryagain: bool  # Whether we should have a "Try Again" button.
 
 
@@ -150,14 +150,14 @@ def extract_query_from_string(prompt: str) -> str:
 
 async def parse_request(
     update: telegram.Update, message: telegram.Message, tryagain: bool = True
-) -> Optional[ParsedRequest]:
+) -> ParsedRequest | None:
     if not perms_ok(update):
         return None
 
     logger.debug("parse_request: {}", message)
 
     # If not None, take photo from this and use it as img2img source
-    msg_of_photo: Optional[telegram.Message] = None
+    msg_of_photo: telegram.Message | None = None
 
     # Use this as the prompt text. Any COMMAND prefix will be removed.
     prompt = ""
@@ -205,7 +205,7 @@ class Bot:
         self,
         update: telegram.Update,
         context: telegram.ext.ContextTypes.DEFAULT_TYPE,
-        message: Optional[telegram.Message] = None,
+        message: telegram.Message | None = None,
         tryagain: bool = True,
     ) -> None:
         if message is None:
@@ -244,7 +244,7 @@ class Bot:
 
         await query.answer()
 
-        photo: Optional[bytearray] = None
+        photo: bytearray | None = None
 
         if query.data == "TRYAGAIN":
             # for Try Again, reply to the original prompt. We just re-handle the replied to message.
@@ -280,11 +280,11 @@ class Bot:
 
 
 # disable safety checker if wanted
-def dummy_checker(images: Any, **kwargs: Any) -> Tuple[Any, bool]:
+def dummy_checker(images: Any, **kwargs: Any) -> tuple[Any, bool]:
     return images, False
 
 
-def load_models() -> Tuple[StableDiffusionPipeline, StableDiffusionImg2ImgPipeline]:
+def load_models() -> tuple[StableDiffusionPipeline, StableDiffusionImg2ImgPipeline]:
     logger.info("Loading text2img pipeline")
     if UPDATE_MODEL:
         pipe = StableDiffusionPipeline.from_pretrained(

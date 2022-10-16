@@ -1,15 +1,16 @@
 #!/usr/bin/env python3
 
-from typing import Any, AsyncIterable, Optional
+from typing import Any, AsyncIterable
 from unittest.mock import ANY, Mock
 
 import numpy as np
 import pytest
-from grpc.aio import ServicerContext
+from grpc.aio import ServicerContext  # pyright: ignore[reportMissingImports]
 from pytest_mock import MockerFixture
 
 import env
 import model_server
+from mocks import mock_StableDiffusionPipeline
 from model_server import ModelServicer
 from model_server_pb2 import Image, ImGenRequest, ImGenRequestMetadata, TokenizeRequest
 from my_logging import logger
@@ -37,17 +38,8 @@ def make_ImGenRequest(**kwargs: Any) -> ImGenRequest:
 @logger.catch
 @pytest.fixture
 async def servicer(mocker: MockerFixture) -> AsyncIterable[ModelServicer]:
-    pipe_spec = (
-        "tokenizer to __call__ vae text_encoder tokenizer unet scheduler safety_checker feature_extractor".split()
-    )
-
-    txt2img_pipe = Mock(spec=pipe_spec)
-    txt2img_pipe.to.return_value = txt2img_pipe
-    mocker.patch("model_server.StableDiffusionPipeline.from_pretrained", return_value=txt2img_pipe)
-
-    img2img_pipe = Mock(spec=pipe_spec)
-    img2img_pipe.to.return_value = img2img_pipe
-    mocker.patch("model_server.StableDiffusionImg2ImgPipeline", return_value=img2img_pipe)
+    mocker.patch("model_server.StableDiffusionPipeline.from_pretrained", return_value=mock_StableDiffusionPipeline())
+    mocker.patch("model_server.StableDiffusionImg2ImgPipeline", return_value=mock_StableDiffusionPipeline())
 
     servicer = ModelServicer(model_server.GPUWorker())
     await servicer.worker._start_worker_task
@@ -61,7 +53,7 @@ async def test_tokenize(servicer: ModelServicer) -> None:
     assert resp.prompt_tokens == ["foo"]
 
 
-def check_image(im: Image, expect_dims: Optional[int] = None) -> None:
+def check_image(im: Image, expect_dims: int | None = None) -> None:
     if expect_dims:
         assert im.width == expect_dims
         assert im.height == expect_dims

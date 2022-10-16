@@ -245,7 +245,7 @@ class GPUWorker:
         return TokenizeResponse(prompt_tokens=self._a_pipe.tokenizer.tokenize(request.prompt))
 
 
-def _assert_has_field(context: grpc.aio.ServicerContext, msg: Any, field: str) -> None:  # type: ignore[name-defined]
+def _assert_has_field(context: grpc.aio.ServicerContext, msg: Any, field: str) -> None:
     if not msg.HasField(field):
         context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"field `{field}` is mandatory")
 
@@ -255,9 +255,7 @@ class ModelServicer(model_server_pb2_grpc.ImGenServiceServicer):
         self.worker = worker
 
     @logger.catch
-    async def generate_image(  # type: ignore[override]
-        self, request: ImGenRequest, context: grpc.aio.ServicerContext  # type: ignore[name-defined]
-    ) -> ImGenResponse:
+    async def generate_image(self, request: ImGenRequest, context: grpc.aio.ServicerContext) -> ImGenResponse:  # type: ignore[override]
         # validate request
         _assert_has_field(context, request, "req_metadata")
         if request.HasField("image"):
@@ -279,14 +277,14 @@ class ModelServicer(model_server_pb2_grpc.ImGenServiceServicer):
         return await self.worker.generate_image(request)
 
     @logger.catch
-    async def tokenize_prompt(self, request: TokenizeRequest, context: grpc.aio.ServicerContext) -> TokenizeResponse:  # type: ignore[name-defined,override]
+    async def tokenize_prompt(self, request: TokenizeRequest, context: grpc.aio.ServicerContext) -> TokenizeResponse:  # type: ignore[override]
         return await self.worker.tokenize_prompt(request)
 
 
 @logger.catch
-async def start_server(endpoint: str | None = None) -> grpc.aio.Server:  # type: ignore[name-defined]
+async def start_server(endpoint: str | None = None) -> grpc.aio.Server:
     logger.info("start_server: endpoint={}", endpoint)
-    server = grpc.aio.server()  # type: ignore[attr-defined]
+    server = grpc.aio.server()
     model_server_pb2_grpc.add_ImGenServiceServicer_to_server(ModelServicer(GPUWorker()), server)
     endpoint = endpoint or f"{config.SERVER_LISTEN_ADDR}:{config.SERVER_PORT}"
     logger.info("Listening to {}", endpoint)
