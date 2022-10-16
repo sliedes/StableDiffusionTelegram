@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from io import BytesIO
 from typing import Any
 
+import PIL
 import telegram
 import telegram.ext
 import torch
@@ -72,7 +73,7 @@ async def generate_image(
     guidance_scale: float = env.GUIDANCE_SCALE,
     photo: bytes | None = None,
     ignore_seed: bool = False,
-) -> tuple[Any, int, str]:
+) -> tuple[PIL.Image, int, str]:
     async with gpu_lock:
         logger.info("generate_image (photo={}): {}", photo is not None, prompt)
         seed, prompt = parse_seed(prompt)

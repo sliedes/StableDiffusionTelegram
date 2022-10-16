@@ -5,3 +5,4 @@ __pycache__/
 launch.json
 settings.json
 stable-diffusion-v1-4/
+.coverage

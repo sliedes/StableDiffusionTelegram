@@ -1,6 +1,7 @@
 from unittest.mock import Mock
 
 import numpy as np
+import PIL
 
 import env
 
@@ -11,5 +12,7 @@ def mock_StableDiffusionPipeline() -> Mock:
     )
     pipe = Mock(spec=pipe_spec)
     pipe.to.return_value = pipe
-    pipe.return_value = {"sample": [np.zeros((env.WIDTH, env.HEIGHT, 3), dtype=np.float16)]}
+    pipe.return_value = {
+        "sample": [PIL.Image.new("RGB", (env.WIDTH, env.HEIGHT))]
+    }  # [np.zeros((env.WIDTH, env.HEIGHT, 3), dtype=np.float16)]}
     return pipe
