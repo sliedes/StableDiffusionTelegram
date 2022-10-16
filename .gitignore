@@ -4,3 +4,4 @@ __pycache__/
 .dmypy.json
 launch.json
 settings.json
+stable-diffusion-v1-4/
