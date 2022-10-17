@@ -1,4 +1,3 @@
-import functools
 import random
 from dataclasses import dataclass
 from typing import Callable, Protocol
@@ -359,6 +358,7 @@ async def test_bot_command(make_message: MakeMessageProtocol, make_botenv: MakeB
     await botenv.bot.handle_update(botenv.update, botenv.context, message, tryagain=False)
     message.reply_text.assert_called_once()
     botenv.bot.pipe.assert_called_once()
+    assert botenv.bot.pipe.call_args.kwargs["prompt"] == ["hello"]
     botenv.bot.img2imgPipe.assert_not_called()
 
 
@@ -380,6 +380,7 @@ async def test_bot_photo_with_caption(make_message: MakeMessageProtocol, make_bo
     message.photo[-1].get_file.assert_called()
     botenv.bot.pipe.assert_not_called()
     botenv.bot.img2imgPipe.assert_called_once()
+    assert botenv.bot.img2imgPipe.call_args.kwargs["prompt"] == ["hello"]
 
 
 async def test_bot_reply_to_photo_no_command(
@@ -404,6 +405,7 @@ async def test_bot_reply_to_photo_with_command(
     message.reply_to_message.photo[-1].get_file.assert_called_once()
     botenv.bot.pipe.assert_not_called()
     botenv.bot.img2imgPipe.assert_called_once()
+    assert botenv.bot.img2imgPipe.call_args.kwargs["prompt"] == ["hello"]
 
 
 async def test_handle_button_try_again_txt2img(
@@ -422,6 +424,7 @@ async def test_handle_button_try_again_txt2img(
     await botenv.bot.handle_button(botenv.update, botenv.context)
     message.reply_to_message.reply_text.assert_called_once()
     botenv.bot.pipe.assert_called_once()
+    assert botenv.bot.pipe.call_args.kwargs["prompt"] == ["hello, world"]
     botenv.bot.img2imgPipe.assert_not_called()
 
 
@@ -443,6 +446,7 @@ async def test_handle_button_try_again_img2img(
     message.reply_to_message.reply_text.assert_called_once()
     botenv.bot.pipe.assert_not_called
     botenv.bot.img2imgPipe.assert_called_once()
+    assert botenv.bot.img2imgPipe.call_args.kwargs["prompt"] == ["hello, world"]
 
 
 async def test_handle_button_try_again_txt2img_seed(
@@ -463,7 +467,52 @@ async def test_handle_button_try_again_txt2img_seed(
     mocker.patch("torch.Generator")
 
     await botenv.bot.handle_button(botenv.update, botenv.context)
+    # The reply should be to the original prompt, not the bot's response
     message.reply_to_message.reply_text.assert_called_once()
     botenv.bot.pipe.assert_called_once()
     torch.Generator().manual_seed.assert_called_once_with(42)  # type: ignore[attr-defined]
+    assert botenv.bot.pipe.call_args.kwargs["prompt"] == ["hello, world"]
     botenv.bot.img2imgPipe.assert_not_called()
+
+
+async def test_handle_button_variations_txt2img(
+    make_message: MakeMessageProtocol, make_botenv: MakeBotEnvProtocol
+) -> None:
+    message = make_message(
+        text=None,
+        photo=True,
+        reply=True,
+        caption='"hello, world" (Seed: 1234)',
+        reply_to_text=bot.COMMAND + "hello, world",
+    )
+
+    botenv = make_botenv(message, query="VARIATIONS")
+    await botenv.bot.handle_button(botenv.update, botenv.context)
+    # The reply should be to the message whose button was clicked
+    message.reply_text.assert_called_once()
+    botenv.bot.pipe.assert_not_called()
+    botenv.bot.img2imgPipe.assert_called_once()
+    assert botenv.bot.img2imgPipe.call_args.kwargs["prompt"] == ["hello, world"]
+    assert torch.is_tensor(botenv.bot.img2imgPipe.call_args.kwargs["init_image"])  # type: ignore[no-untyped-call]
+
+
+async def test_handle_button_variations_img2img(
+    make_message: MakeMessageProtocol, make_botenv: MakeBotEnvProtocol
+) -> None:
+    message = make_message(
+        text=None,
+        photo=True,
+        reply_to_photo=True,
+        reply=True,
+        caption='"hello, world" (Seed: 1234)',
+        reply_to_caption='"hello, world" (Seed: 42)',
+    )
+
+    botenv = make_botenv(message, query="VARIATIONS")
+    await botenv.bot.handle_button(botenv.update, botenv.context)
+    # The reply should be to the message whose button was clicked
+    message.reply_text.assert_called_once()
+    botenv.bot.pipe.assert_not_called()
+    botenv.bot.img2imgPipe.assert_called_once()
+    assert botenv.bot.img2imgPipe.call_args.kwargs["prompt"] == ["hello, world"]
+    assert torch.is_tensor(botenv.bot.img2imgPipe.call_args.kwargs["init_image"])  # type: ignore[no-untyped-call]

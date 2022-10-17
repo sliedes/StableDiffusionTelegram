@@ -9,12 +9,15 @@ import PIL
 import telegram
 import telegram.ext
 import torch
-from diffusers import StableDiffusionPipeline
+from diffusers import StableDiffusionPipeline as StableDiffusionPipeline
 from PIL import Image
 from torch import autocast  # type: ignore[attr-defined]
 
 import env
-from image_to_image import StableDiffusionImg2ImgPipeline, preprocess
+from image_to_image import (
+    StableDiffusionImg2ImgPipeline as StableDiffusionImg2ImgPipeline,
+)
+from image_to_image import preprocess
 from my_logging import logger
 
 # Interpret messages starting with this string as requests to us
