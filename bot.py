@@ -208,6 +208,7 @@ class Bot:
         context: telegram.ext.ContextTypes.DEFAULT_TYPE,
         message: telegram.Message | None = None,
         tryagain: bool = True,
+        ignore_seed: bool = False,
     ) -> None:
         if message is None:
             message = update.message
@@ -219,7 +220,7 @@ class Bot:
 
         progress_msg = await message.reply_text("Generating image...", reply_to_message_id=message.message_id)
         im, seed, prompt = await generate_image(
-            pipe=self.pipe, img2imgPipe=self.img2imgPipe, prompt=req.prompt, photo=req.photo
+            pipe=self.pipe, img2imgPipe=self.img2imgPipe, prompt=req.prompt, photo=req.photo, ignore_seed=ignore_seed
         )
         await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
         await context.bot.send_photo(
@@ -231,9 +232,7 @@ class Bot:
         )
 
     async def handle_button(
-        self,
-        update: telegram.Update,
-        context: telegram.ext.ContextTypes.DEFAULT_TYPE,
+        self, update: telegram.Update, context: telegram.ext.ContextTypes.DEFAULT_TYPE, ignore_seed: bool = False
     ) -> None:
         query = update.callback_query
         assert query is not None
@@ -249,9 +248,8 @@ class Bot:
 
         if query.data == "TRYAGAIN":
             # for Try Again, reply to the original prompt. We just re-handle the replied to message.
-            # TODO: ignore any seed.
             logger.info("Try again: Re-handling parent.")
-            await self.handle_update(update, context, message=parent_message)
+            await self.handle_update(update, context, message=parent_message, ignore_seed=True)
             return
         elif query.data != "VARIATIONS":
             logger.error("Unknown query data: {}", query)

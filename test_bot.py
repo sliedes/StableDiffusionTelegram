@@ -2,7 +2,7 @@ import functools
 import random
 from dataclasses import dataclass
 from typing import Callable, Protocol
-from unittest.mock import Mock
+from unittest.mock import Mock, NonCallableMock
 
 import PIL
 import pytest
@@ -443,3 +443,27 @@ async def test_handle_button_try_again_img2img(
     message.reply_to_message.reply_text.assert_called_once()
     botenv.bot.pipe.assert_not_called
     botenv.bot.img2imgPipe.assert_called_once()
+
+
+async def test_handle_button_try_again_txt2img_seed(
+    mocker: MockerFixture, make_message: MakeMessageProtocol, make_botenv: MakeBotEnvProtocol
+) -> None:
+    """Test that the seed is re-randomized when the user presses the 'Try Again' button even if the
+    orignal prompt had a seed."""
+    message = make_message(
+        text=None,
+        photo=True,
+        reply=True,
+        caption='"hello, world" (Seed: 1234)',
+        reply_to_text=bot.COMMAND + "seed:1234 hello, world",
+    )
+
+    botenv = make_botenv(message, query="TRYAGAIN")
+    mocker.patch("random.randint", return_value=42)
+    mocker.patch("torch.Generator")
+
+    await botenv.bot.handle_button(botenv.update, botenv.context)
+    message.reply_to_message.reply_text.assert_called_once()
+    botenv.bot.pipe.assert_called_once()
+    torch.Generator().manual_seed.assert_called_once_with(42)  # type: ignore[attr-defined]
+    botenv.bot.img2imgPipe.assert_not_called()
