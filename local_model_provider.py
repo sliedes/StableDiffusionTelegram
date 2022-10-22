@@ -59,14 +59,14 @@ def load_models() -> tuple[StableDiffusionPipeline, StableDiffusionImg2ImgPipeli
 class LocalModelProvider(ModelProvider):
     """Provides a Stable Diffusion model locally."""
 
-    gpu_lock: asyncio.Lock
-    txt2imgPipe: StableDiffusionPipeline
-    img2imgPipe: StableDiffusionImg2ImgPipeline
+    _gpu_lock: asyncio.Lock
+    _txt2imgPipe: StableDiffusionPipeline
+    _img2imgPipe: StableDiffusionImg2ImgPipeline
 
     def __init__(self) -> None:
         super().__init__()
-        self.txt2imgPipe, self.img2imgPipe = load_models()
-        self.gpu_lock = asyncio.Lock()
+        self._txt2imgPipe, self._img2imgPipe = load_models()
+        self._gpu_lock = asyncio.Lock()
 
     async def __call__(
         self,
@@ -79,14 +79,14 @@ class LocalModelProvider(ModelProvider):
         num_inference_steps: int,
         init_image: npt.NDArray[np.float_] | None = None,
     ) -> npt.NDArray[np.float_]:
-        async with self.gpu_lock:
+        async with self._gpu_lock:
             logger.info("generate_image (init_image={}): {}", init_image is not None, prompt)
             generator = torch.Generator(device="cuda")
             generator.manual_seed(seed)
 
             if init_image is not None:
                 with autocast("cuda"):
-                    image = self.img2imgPipe(
+                    image = self._img2imgPipe(
                         prompt=[prompt],
                         init_image=cast(torch.FloatTensor, torch.as_tensor(init_image).to("cuda").float()),
                         generator=generator,
@@ -96,7 +96,7 @@ class LocalModelProvider(ModelProvider):
                     )["sample"][0]
             else:
                 with autocast("cuda"):
-                    image = self.txt2imgPipe(
+                    image = self._txt2imgPipe(
                         prompt=[prompt],
                         generator=generator,
                         strength=strength,

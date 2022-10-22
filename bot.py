@@ -21,7 +21,6 @@ from my_logging import logger
 # Interpret messages starting with this string as requests to us
 COMMAND = "!kuva "
 
-UPDATE_MODEL = False
 REPORT_TORCH_DUPLICATES = False
 
 gpu_lock = asyncio.Lock()
