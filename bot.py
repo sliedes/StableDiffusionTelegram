@@ -5,26 +5,24 @@ from dataclasses import dataclass
 from io import BytesIO
 from typing import Any
 
+import numpy as np
+import numpy.typing as npt
 import PIL
 import telegram
 import telegram.ext
-import torch
-from diffusers import StableDiffusionPipeline as StableDiffusionPipeline
 from PIL import Image
-from torch import autocast  # type: ignore[attr-defined]
 
 import env
-from image_to_image import (
-    StableDiffusionImg2ImgPipeline as StableDiffusionImg2ImgPipeline,
-)
 from image_to_image import preprocess
+from local_model_provider import LocalModelProvider
+from model_provider import ModelProvider
 from my_logging import logger
 
 # Interpret messages starting with this string as requests to us
 COMMAND = "!kuva "
 
 UPDATE_MODEL = False
-REPORT_TORCH_DUPLICATES = True
+REPORT_TORCH_DUPLICATES = False
 
 gpu_lock = asyncio.Lock()
 
@@ -64,9 +62,20 @@ def parse_seed(prompt: str) -> tuple[int | None, str]:
     return seed, prompt
 
 
+def numpy_to_pil(images: npt.NDArray[np.float32]) -> PIL.Image:
+    """
+    Convert a numpy image or a batch of images to a PIL image.
+    """
+    if images.ndim == 3:
+        images = images[None, ...]
+    images = (images * 255).round().astype("uint8")
+    pil_images = [Image.fromarray(image) for image in images]
+
+    return pil_images
+
+
 async def generate_image(
-    pipe: StableDiffusionPipeline,
-    img2imgPipe: StableDiffusionImg2ImgPipeline,
+    model_provider: ModelProvider,
     prompt: str,
     seed: int | None = None,
     height: int = env.HEIGHT,
@@ -77,39 +86,36 @@ async def generate_image(
     photo: bytes | None = None,
     ignore_seed: bool = False,
 ) -> tuple[PIL.Image, int, str]:
-    async with gpu_lock:
-        logger.info("generate_image (photo={}): {}", photo is not None, prompt)
-        seed, prompt = parse_seed(prompt)
-        if seed is None or ignore_seed:
-            seed = random.randint(1, 100000)
-        generator = torch.Generator(device="cuda")
-        generator.manual_seed(seed)
+    logger.info("generate_image (photo={}): {}", photo is not None, prompt)
+    seed, prompt = parse_seed(prompt)
+    if seed is None or ignore_seed:
+        seed = random.randint(1, 100000)
 
-        if photo is not None:
-            init_image = Image.open(BytesIO(photo)).convert("RGB")
-            init_image = init_image.resize((height, width))
-            init_image = preprocess(init_image)
-            with autocast("cuda"):
-                image = img2imgPipe(
-                    prompt=[prompt],
-                    init_image=init_image,
-                    generator=generator,
-                    strength=strength,
-                    guidance_scale=guidance_scale,
-                    num_inference_steps=num_inference_steps,
-                )["sample"][0]
-        else:
-            with autocast("cuda"):
-                image = pipe(
-                    prompt=[prompt],
-                    generator=generator,
-                    strength=strength,
-                    height=height,
-                    width=width,
-                    guidance_scale=guidance_scale,
-                    num_inference_steps=num_inference_steps,
-                )["sample"][0]
-        return image, seed, prompt
+    if photo is not None:
+        init_image = Image.open(BytesIO(photo)).convert("RGB")
+        init_image = init_image.resize((height, width))
+        init_image = preprocess(init_image)
+        image = await model_provider(
+            prompt=prompt,
+            width=width,
+            height=height,
+            seed=seed,
+            strength=strength,
+            guidance_scale=guidance_scale,
+            num_inference_steps=num_inference_steps,
+            init_image=init_image,
+        )
+    else:
+        image = await model_provider(
+            prompt=prompt,
+            width=width,
+            height=height,
+            seed=seed,
+            strength=strength,
+            guidance_scale=guidance_scale,
+            num_inference_steps=num_inference_steps,
+        )
+    return PIL.Image.fromarray(image), seed, prompt
 
 
 def perms_ok(update: telegram.Update) -> bool:
@@ -199,11 +205,12 @@ async def parse_request(
 
 
 class Bot:
-    pipe: StableDiffusionPipeline
-    img2imgPipe: StableDiffusionImg2ImgPipeline
+    model_provider: ModelProvider
 
-    def __init__(self) -> None:
-        self.pipe, self.img2imgPipe = load_models()
+    def __init__(self, model_provider: ModelProvider | None = None) -> None:
+        if model_provider is None:
+            model_provider = LocalModelProvider()
+        self.model_provider = model_provider
 
     async def handle_update(
         self,
@@ -223,7 +230,7 @@ class Bot:
 
         progress_msg = await message.reply_text("Generating image...", reply_to_message_id=message.message_id)
         im, seed, prompt = await generate_image(
-            pipe=self.pipe, img2imgPipe=self.img2imgPipe, prompt=req.prompt, photo=req.photo, ignore_seed=ignore_seed
+            model_provider=self.model_provider, prompt=req.prompt, photo=req.photo, ignore_seed=ignore_seed
         )
         await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
         await context.bot.send_photo(
@@ -269,7 +276,7 @@ class Bot:
 
         progress_msg = await query.message.reply_text("Generating image...", reply_to_message_id=reply_to)
         im, seed, prompt = await generate_image(
-            pipe=self.pipe, img2imgPipe=self.img2imgPipe, prompt=prompt, photo=photo, ignore_seed=True
+            model_provider=self.model_provider, prompt=prompt, photo=photo, ignore_seed=True
         )
         await context.bot.delete_message(chat_id=progress_msg.chat_id, message_id=progress_msg.message_id)
         await context.bot.send_photo(
@@ -281,47 +288,8 @@ class Bot:
         )
 
 
-# disable safety checker if wanted
-def dummy_checker(images: Any, **kwargs: Any) -> tuple[Any, bool]:
-    return images, False
-
-
-def load_models() -> tuple[StableDiffusionPipeline, StableDiffusionImg2ImgPipeline]:
-    logger.info("Loading text2img pipeline")
-    if UPDATE_MODEL:
-        pipe = StableDiffusionPipeline.from_pretrained(
-            env.MODEL_DATA,
-            revision=env.MODEL_REVISION,
-            torch_dtype=env.TORCH_DTYPE,
-            use_auth_token=env.HF_AUTH_TOKEN,
-        )
-        torch.save(pipe, "text2img.pt")
-    else:
-        pipe = torch.load("text2img.pt")  # type: ignore[no-untyped-call]
-    logger.info("Loaded text2img pipeline")
-
-    img2imgPipe = StableDiffusionImg2ImgPipeline(
-        vae=pipe.vae,
-        text_encoder=pipe.text_encoder,
-        tokenizer=pipe.tokenizer,
-        unet=pipe.unet,
-        scheduler=pipe.scheduler,
-        safety_checker=pipe.safety_checker,
-        feature_extractor=pipe.feature_extractor,
-    )
-
-    pipe = pipe.to("cuda")
-    img2imgPipe = img2imgPipe.to("cuda")
-
-    if not env.SAFETY_CHECKER:
-        pipe.safety_checker = dummy_checker
-        img2imgPipe.safety_checker = dummy_checker
-
-    return pipe, img2imgPipe
-
-
 def main() -> None:
-    bot = Bot()
+    bot = Bot(LocalModelProvider())
 
     if REPORT_TORCH_DUPLICATES:
         import torch_duplicates

@@ -15,6 +15,8 @@ from model_server import ModelServicer
 from model_server_pb2 import Image, ImGenRequest, ImGenRequestMetadata, TokenizeRequest
 from my_logging import logger
 
+# FIXME: Lots of stuff in this file also tests LocalModelProvider; that should be done separately.
+
 _ImGenRequestMetadata_template = ImGenRequestMetadata(
     width=env.WIDTH,
     height=env.HEIGHT,
