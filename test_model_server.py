@@ -49,7 +49,9 @@ async def servicer(mocker: MockerFixture) -> AsyncIterable[ModelServicer]:
 
 async def test_tokenize(servicer: ModelServicer) -> None:
     servicer.worker._a_pipe.tokenizer.tokenize.return_value = ["foo"]
-    resp = await servicer.tokenize_prompt(TokenizeRequest(prompt="Hello, world!"), context=Mock(spec=ServicerContext))
+    resp = await servicer.tokenize_prompt(
+        TokenizeRequest(prompt="Hello, world!"), context=Mock(spec_set=ServicerContext)
+    )
     assert resp.prompt_tokens == ["foo"]
 
 
@@ -64,7 +66,7 @@ def check_image(im: Image, expect_dims: int | None = None) -> None:
 async def test_txt2img_compute(servicer: ModelServicer) -> None:
     req = make_ImGenRequest(prompt="A ball on a floor", test_no_compute=False, iterations=2)
     servicer.worker._a_pipe.return_value = {"sample": [np.zeros((env.WIDTH, env.HEIGHT, 3), dtype=np.float16)]}
-    resp = await servicer.generate_image(req, context=Mock(spec=ServicerContext))
+    resp = await servicer.generate_image(req, context=Mock(spec_set=ServicerContext))
     servicer.worker._a_pipe.assert_called_once_with(
         **dict(
             prompt=[req.req_metadata.prompt],
@@ -74,7 +76,7 @@ async def test_txt2img_compute(servicer: ModelServicer) -> None:
             strength=req.req_metadata.strength,
             guidance_scale=req.req_metadata.guidance_scale,
             num_inference_steps=req.req_metadata.iterations,
-            output_type="numpy",
+            output_type="np.array",
         )
     )
     check_image(resp.image, env.WIDTH)
@@ -83,7 +85,7 @@ async def test_txt2img_compute(servicer: ModelServicer) -> None:
 
 async def test_txt2img_nocompute(servicer: ModelServicer) -> None:
     req = make_ImGenRequest(prompt="A ball on a floor", test_no_compute=True, iterations=2)
-    resp = await servicer.generate_image(req, context=Mock(spec=ServicerContext))
+    resp = await servicer.generate_image(req, context=Mock(spec_set=ServicerContext))
     servicer.worker._a_pipe.assert_not_called()
     assert resp.req_metadata == req.req_metadata
     check_image(resp.image, 0)
@@ -93,7 +95,7 @@ async def test_img2img_compute(servicer: ModelServicer) -> None:
     req = make_ImGenRequest(prompt="A ball on a floor", test_no_compute=False, iterations=2)
     req.image.CopyFrom(_Image_template)
     servicer.worker._a_img2imgpipe.return_value = {"sample": [np.zeros((env.WIDTH, env.HEIGHT, 3), dtype=np.float16)]}
-    resp = await servicer.generate_image(req, context=Mock(spec=ServicerContext))
+    resp = await servicer.generate_image(req, context=Mock(spec_set=ServicerContext))
     servicer.worker._a_img2imgpipe.assert_called_once_with(
         **dict(
             prompt=[req.req_metadata.prompt],
@@ -102,7 +104,7 @@ async def test_img2img_compute(servicer: ModelServicer) -> None:
             strength=req.req_metadata.strength,
             guidance_scale=req.req_metadata.guidance_scale,
             num_inference_steps=req.req_metadata.iterations,
-            output_type="numpy",
+            output_type="np.array",
         )
     )
     check_image(resp.image, env.WIDTH)

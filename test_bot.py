@@ -1,20 +1,22 @@
 import random
 from dataclasses import dataclass
 from typing import Callable, Protocol, cast
-from unittest.mock import Mock
+from unittest.mock import ANY, Mock
 
+import numpy as np
 import PIL
 import pytest
 import telegram
-import torch
 from pytest import FixtureRequest
 from pytest_mock import MockerFixture
 
 import bot
 import env
-import local_model_provider
 from local_model_provider import LocalModelProvider
-from mocks import mock_StableDiffusionPipeline
+from mock_utils import assert_called_once_with_partial, fill_default_args
+from mocks import mock_ModelProvider
+from model_provider import ModelProvider
+from my_logging import logger
 
 # FIXME: Lots of stuff in this file also tests LocalModelProvider; that should be done separately.
 
@@ -30,11 +32,8 @@ def maybe_photo(request: FixtureRequest) -> bytes | None:
 
 
 @pytest.fixture
-def local_model_provider_(mocker: MockerFixture) -> local_model_provider.LocalModelProvider:
-    txt2img = mock_StableDiffusionPipeline()
-    img2img = mock_StableDiffusionPipeline()
-    mocker.patch("local_model_provider.load_models", return_value=(txt2img, img2img))
-    return local_model_provider.LocalModelProvider()
+def model_provider_() -> Mock:
+    return mock_ModelProvider()
 
 
 def test_image_to_bytes() -> None:
@@ -56,16 +55,16 @@ def test_parse_seed() -> None:
     assert bot.parse_seed("seed:xyz text") == (None, "text")
 
 
-async def test_generate_image_no_seed(local_model_provider_: Mock, maybe_photo: bytes | None) -> None:
-    im, seed, prompt = await bot.generate_image(local_model_provider_, "Hello, world!", photo=maybe_photo)
+async def test_generate_image_no_seed(model_provider_: Mock, maybe_photo: bytes | None) -> None:
+    im, seed, prompt = await bot.generate_image(model_provider_, "Hello, world!", photo=maybe_photo)
     assert isinstance(im, PIL.Image.Image)
     assert im.size == (env.WIDTH, env.HEIGHT)
     assert isinstance(seed, int)
     assert prompt == "Hello, world!"
 
 
-async def test_generate_image_with_seed(local_model_provider_: Mock, maybe_photo: bytes | None) -> None:
-    im, seed, prompt = await bot.generate_image(local_model_provider_, "seed:1234 Hello, world!", photo=maybe_photo)
+async def test_generate_image_with_seed(model_provider_: Mock, maybe_photo: bytes | None) -> None:
+    im, seed, prompt = await bot.generate_image(model_provider_, "seed:1234 Hello, world!", photo=maybe_photo)
     assert isinstance(im, PIL.Image.Image)
     assert im.size == (env.WIDTH, env.HEIGHT)
     assert seed == 1234
@@ -73,12 +72,12 @@ async def test_generate_image_with_seed(local_model_provider_: Mock, maybe_photo
 
 
 async def test_generate_image_ignore_seed(
-    local_model_provider_: Mock, mocker: MockerFixture, maybe_photo: bytes | None
+    model_provider_: Mock, mocker: MockerFixture, maybe_photo: bytes | None
 ) -> None:
     mocker.patch("random.randint")
     random.randint.return_value = 42  # type: ignore[attr-defined]
     im, seed, prompt = await bot.generate_image(
-        local_model_provider_, "seed:1234 Hello, world!", ignore_seed=True, photo=maybe_photo
+        model_provider_, "seed:1234 Hello, world!", ignore_seed=True, photo=maybe_photo
     )
     assert isinstance(im, PIL.Image.Image)
     assert im.size == (env.WIDTH, env.HEIGHT)
@@ -207,6 +206,17 @@ def test_extract_query_from_string() -> None:
     assert bot.extract_query_from_string(bot.COMMAND + '"hello" (Seed: 123)') == "hello"
 
 
+def assert_called_once_without_image(provider: ModelProvider) -> None:
+    fill_default_args(provider)  # type: ignore[arg-type]  # FIXME
+    assert_called_once_with_partial(provider, init_image=None)  # type: ignore[arg-type]
+
+
+def assert_called_once_with_image(provider: ModelProvider) -> None:
+    provider.assert_called_once()  # type: ignore[attr-defined]
+    fill_default_args(provider)  # type: ignore[arg-type]  # FIXME
+    assert isinstance(provider.call_args.kwargs["init_image"], np.ndarray)  # type: ignore[attr-defined]
+
+
 @pytest.fixture(params=[False, True])
 def tryagain(request: FixtureRequest) -> bool:
     return request.param  # type: ignore[no-any-return]
@@ -214,27 +224,13 @@ def tryagain(request: FixtureRequest) -> bool:
 
 # FIXME move some stuff to test_local_model_provider.py
 @pytest.fixture(params=["update", "noupdate"])
-def bot_(mocker: MockerFixture, request: FixtureRequest, local_model_provider_: Mock) -> bot.Bot:
+def bot_(mocker: MockerFixture, request: FixtureRequest, model_provider_: Mock) -> bot.Bot:
     if request.param == "noupdate":
         mocker.patch("local_model_provider.UPDATE_MODEL", False)
     else:
         assert request.param == "update"
         mocker.patch("local_model_provider.UPDATE_MODEL", True)
-    b = bot.Bot(local_model_provider_)
-    # mocker.patch(
-    #     "local_model_provider.StableDiffusionPipeline.from_pretrained", return_value=mock_StableDiffusionPipeline()
-    # )
-    # # mocker.patch("torch.load")
-    # mocker.patch("torch.save")
-    # if request.param == "update":
-    #     local_model_provider.StableDiffusionPipeline.from_pretrained.assert_called_once()
-    #     torch.load.assert_not_called()  # type: ignore[attr-defined]
-    #     torch.save.assert_called_once()  # type: ignore[attr-defined]
-    # else:
-    #     local_model_provider.StableDiffusionPipeline.from_pretrained.assert_not_called()
-    #     torch.load.assert_called_once()  # type: ignore[attr-defined]
-    #     torch.save.assert_not_called()  # type: ignore[attr-defined]
-    # local_model_provider.StableDiffusionImg2ImgPipeline.assert_called_once()
+    b = bot.Bot(model_provider_)
     return b
 
 
@@ -285,8 +281,7 @@ async def test_bot_no_command_no_photo(make_message: MakeMessageProtocol, make_b
     botenv = make_botenv(message)
     await botenv.bot.handle_update(botenv.update, botenv.context, message, tryagain=False)
     message.reply_text.assert_not_called()
-    cast(LocalModelProvider, botenv.bot.model_provider)._txt2imgPipe.assert_not_called()
-    cast(LocalModelProvider, botenv.bot.model_provider)._img2imgPipe.assert_not_called()
+    botenv.bot.model_provider.assert_not_called()  # type: ignore[attr-defined]
 
 
 async def test_bot_command(make_message: MakeMessageProtocol, make_botenv: MakeBotEnvProtocol) -> None:
@@ -294,9 +289,11 @@ async def test_bot_command(make_message: MakeMessageProtocol, make_botenv: MakeB
     botenv = make_botenv(message)
     await botenv.bot.handle_update(botenv.update, botenv.context, message, tryagain=False)
     message.reply_text.assert_called_once()
-    cast(LocalModelProvider, botenv.bot.model_provider)._txt2imgPipe.assert_called_once()
-    assert cast(LocalModelProvider, botenv.bot.model_provider)._txt2imgPipe.call_args.kwargs["prompt"] == ["hello"]
-    cast(LocalModelProvider, botenv.bot.model_provider)._img2imgPipe.assert_not_called()
+    logger.info("kwargs={}", botenv.bot.model_provider.call_args.kwargs)  # type: ignore[attr-defined]
+    fill_default_args(botenv.bot.model_provider)
+    logger.info("kwargs={}", botenv.bot.model_provider.call_args.kwargs)  # type: ignore[attr-defined]
+    assert_called_once_without_image(botenv.bot.model_provider)
+    assert botenv.bot.model_provider.call_args.kwargs["prompt"] == "hello"  # type: ignore[attr-defined]
 
 
 async def test_bot_photo_without_caption(make_message: MakeMessageProtocol, make_botenv: MakeBotEnvProtocol) -> None:
@@ -305,8 +302,7 @@ async def test_bot_photo_without_caption(make_message: MakeMessageProtocol, make
     await botenv.bot.handle_update(botenv.update, botenv.context, message, tryagain=False)
     message.reply_text.assert_not_called()
     message.photo[-1].get_file.assert_not_called()
-    cast(LocalModelProvider, botenv.bot.model_provider)._txt2imgPipe.assert_not_called()
-    cast(LocalModelProvider, botenv.bot.model_provider)._img2imgPipe.assert_not_called()
+    botenv.bot.model_provider.assert_not_called()  # type: ignore[attr-defined]
 
 
 async def test_bot_photo_with_caption(make_message: MakeMessageProtocol, make_botenv: MakeBotEnvProtocol) -> None:
@@ -315,9 +311,9 @@ async def test_bot_photo_with_caption(make_message: MakeMessageProtocol, make_bo
     await botenv.bot.handle_update(botenv.update, botenv.context, message, tryagain=False)
     message.reply_text.assert_called_once()
     message.photo[-1].get_file.assert_called()
-    cast(LocalModelProvider, botenv.bot.model_provider)._txt2imgPipe.assert_not_called()
-    cast(LocalModelProvider, botenv.bot.model_provider)._img2imgPipe.assert_called_once()
-    assert cast(LocalModelProvider, botenv.bot.model_provider)._img2imgPipe.call_args.kwargs["prompt"] == ["hello"]
+    botenv.bot.model_provider.assert_called_once()  # type: ignore[attr-defined]
+    assert_called_once_with_image(botenv.bot.model_provider)
+    assert botenv.bot.model_provider.call_args.kwargs["prompt"] == "hello"  # type: ignore[attr-defined]
 
 
 async def test_bot_reply_to_photo_no_command(
@@ -328,8 +324,7 @@ async def test_bot_reply_to_photo_no_command(
     await botenv.bot.handle_update(botenv.update, botenv.context, message, tryagain=False)
     message.reply_text.assert_not_called()
     message.reply_to_message.photo[-1].get_file.assert_not_called()
-    cast(LocalModelProvider, botenv.bot.model_provider)._txt2imgPipe.assert_not_called()
-    cast(LocalModelProvider, botenv.bot.model_provider)._img2imgPipe.assert_not_called()
+    botenv.bot.model_provider.assert_not_called()  # type: ignore[attr-defined]
 
 
 async def test_bot_reply_to_photo_with_command(
@@ -340,9 +335,8 @@ async def test_bot_reply_to_photo_with_command(
     await botenv.bot.handle_update(botenv.update, botenv.context, message, tryagain=False)
     message.reply_text.assert_called_once()
     message.reply_to_message.photo[-1].get_file.assert_called_once()
-    cast(LocalModelProvider, botenv.bot.model_provider)._txt2imgPipe.assert_not_called()
-    cast(LocalModelProvider, botenv.bot.model_provider)._img2imgPipe.assert_called_once()
-    assert cast(LocalModelProvider, botenv.bot.model_provider)._img2imgPipe.call_args.kwargs["prompt"] == ["hello"]
+    assert_called_once_with_image(botenv.bot.model_provider)
+    assert botenv.bot.model_provider.call_args.kwargs["prompt"] == "hello"  # type: ignore[attr-defined]
 
 
 async def test_handle_button_try_again_txt2img(
@@ -360,11 +354,8 @@ async def test_handle_button_try_again_txt2img(
     botenv = make_botenv(message, query="TRYAGAIN")
     await botenv.bot.handle_button(botenv.update, botenv.context)
     message.reply_to_message.reply_text.assert_called_once()
-    cast(LocalModelProvider, botenv.bot.model_provider)._txt2imgPipe.assert_called_once()
-    assert cast(LocalModelProvider, botenv.bot.model_provider)._txt2imgPipe.call_args.kwargs["prompt"] == [
-        "hello, world"
-    ]
-    cast(LocalModelProvider, botenv.bot.model_provider)._img2imgPipe.assert_not_called()
+    assert_called_once_without_image(botenv.bot.model_provider)
+    assert botenv.bot.model_provider.call_args.kwargs["prompt"] == "hello, world"  # type: ignore[attr-defined]
 
 
 async def test_handle_button_try_again_img2img(
@@ -383,11 +374,8 @@ async def test_handle_button_try_again_img2img(
     botenv = make_botenv(message, query="TRYAGAIN")
     await botenv.bot.handle_button(botenv.update, botenv.context)
     message.reply_to_message.reply_text.assert_called_once()
-    cast(LocalModelProvider, botenv.bot.model_provider)._txt2imgPipe.assert_not_called
-    cast(LocalModelProvider, botenv.bot.model_provider)._img2imgPipe.assert_called_once()
-    assert cast(LocalModelProvider, botenv.bot.model_provider)._img2imgPipe.call_args.kwargs["prompt"] == [
-        "hello, world"
-    ]
+    assert_called_once_with_image(botenv.bot.model_provider)
+    assert botenv.bot.model_provider.call_args.kwargs["prompt"] == "hello, world"  # type: ignore[attr-defined]
 
 
 async def test_handle_button_try_again_txt2img_seed(
@@ -410,12 +398,7 @@ async def test_handle_button_try_again_txt2img_seed(
     await botenv.bot.handle_button(botenv.update, botenv.context)
     # The reply should be to the original prompt, not the bot's response
     message.reply_to_message.reply_text.assert_called_once()
-    cast(LocalModelProvider, botenv.bot.model_provider)._txt2imgPipe.assert_called_once()
-    torch.Generator().manual_seed.assert_called_once_with(42)  # type: ignore[attr-defined]
-    assert cast(LocalModelProvider, botenv.bot.model_provider)._txt2imgPipe.call_args.kwargs["prompt"] == [
-        "hello, world"
-    ]
-    cast(LocalModelProvider, botenv.bot.model_provider)._img2imgPipe.assert_not_called()
+    assert_called_once_with_partial(botenv.bot.model_provider, prompt="hello, world", seed=42, init_image=None)
 
 
 async def test_handle_button_variations_txt2img(
@@ -433,12 +416,8 @@ async def test_handle_button_variations_txt2img(
     await botenv.bot.handle_button(botenv.update, botenv.context)
     # The reply should be to the message whose button was clicked
     message.reply_text.assert_called_once()
-    cast(LocalModelProvider, botenv.bot.model_provider)._txt2imgPipe.assert_not_called()
-    cast(LocalModelProvider, botenv.bot.model_provider)._img2imgPipe.assert_called_once()
-    assert cast(LocalModelProvider, botenv.bot.model_provider)._img2imgPipe.call_args.kwargs["prompt"] == [
-        "hello, world"
-    ]
-    assert torch.is_tensor(cast(LocalModelProvider, botenv.bot.model_provider)._img2imgPipe.call_args.kwargs["init_image"])  # type: ignore[no-untyped-call]
+    assert_called_once_with_partial(botenv.bot.model_provider, prompt="hello, world")
+    assert isinstance(botenv.bot.model_provider.call_args.kwargs.get("init_image"), np.ndarray)  # type: ignore[attr-defined]
 
 
 async def test_handle_button_variations_img2img(
@@ -457,9 +436,6 @@ async def test_handle_button_variations_img2img(
     await botenv.bot.handle_button(botenv.update, botenv.context)
     # The reply should be to the message whose button was clicked
     message.reply_text.assert_called_once()
-    cast(LocalModelProvider, botenv.bot.model_provider)._txt2imgPipe.assert_not_called()
-    cast(LocalModelProvider, botenv.bot.model_provider)._img2imgPipe.assert_called_once()
-    assert cast(LocalModelProvider, botenv.bot.model_provider)._img2imgPipe.call_args.kwargs["prompt"] == [
-        "hello, world"
-    ]
-    assert torch.is_tensor(cast(LocalModelProvider, botenv.bot.model_provider)._img2imgPipe.call_args.kwargs["init_image"])  # type: ignore[no-untyped-call]
+    fill_default_args(botenv.bot.model_provider)
+    assert_called_once_with_partial(botenv.bot.model_provider, prompt="hello, world")
+    assert isinstance(botenv.bot.model_provider.call_args.kwargs["init_image"], np.ndarray)  # type: ignore[attr-defined]

@@ -61,16 +61,13 @@ def parse_seed(prompt: str) -> tuple[int | None, str]:
     return seed, prompt
 
 
-def numpy_to_pil(images: npt.NDArray[np.float32]) -> PIL.Image:
+def numpy_to_pil(image: npt.NDArray[np.float32]) -> PIL.Image:
     """
-    Convert a numpy image or a batch of images to a PIL image.
+    Convert a numpy image to a PIL image.
     """
-    if images.ndim == 3:
-        images = images[None, ...]
-    images = (images * 255).round().astype("uint8")
-    pil_images = [Image.fromarray(image) for image in images]
-
-    return pil_images
+    assert image.ndim == 3, image.shape
+    image = (image * 255).round().astype("uint8")
+    return Image.fromarray(image)
 
 
 async def generate_image(
@@ -114,7 +111,7 @@ async def generate_image(
             guidance_scale=guidance_scale,
             num_inference_steps=num_inference_steps,
         )
-    return PIL.Image.fromarray(image), seed, prompt
+    return numpy_to_pil(image), seed, prompt
 
 
 def perms_ok(update: telegram.Update) -> bool:

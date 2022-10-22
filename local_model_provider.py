@@ -32,6 +32,7 @@ def load_models() -> tuple[StableDiffusionPipeline, StableDiffusionImg2ImgPipeli
             use_auth_token=env.HF_AUTH_TOKEN,
         )
         torch.save(pipe, "text2img.pt")
+        logger.info("Saved text2img.pt")
     else:
         pipe = torch.load("text2img.pt")  # type: ignore[no-untyped-call]
     logger.info("Loaded text2img pipeline")
@@ -93,6 +94,7 @@ class LocalModelProvider(ModelProvider):
                         strength=strength,
                         guidance_scale=guidance_scale,
                         num_inference_steps=num_inference_steps,
+                        output_type="np.array",
                     )["sample"][0]
             else:
                 with autocast("cuda"):
@@ -104,8 +106,10 @@ class LocalModelProvider(ModelProvider):
                         width=width,
                         guidance_scale=guidance_scale,
                         num_inference_steps=num_inference_steps,
+                        output_type="np.array",
                     )["sample"][0]
-            return np.array(image)  # FIXME: avoid the PIL round trip?
+            assert isinstance(image, np.ndarray), type(image)
+            return image
 
 
 __all__ = ["LocalModelProvider"]

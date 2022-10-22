@@ -187,7 +187,7 @@ class GPUWorker:
             # TODO: float buffer
             init_image = PIL.Image.fromarray(np.frombuffer(photo, dtype="B").reshape((width, height, 3)), mode="RGB")
             init_image = init_image.resize((height, width))
-            init_image = preprocess(init_image).half()
+            init_image = torch.from_numpy(preprocess(init_image)).half()
             with autocast("cuda"):
                 image = self._a_img2imgpipe(
                     prompt=[prompt],
@@ -196,7 +196,7 @@ class GPUWorker:
                     strength=strength,
                     guidance_scale=guidance_scale,
                     num_inference_steps=num_inference_steps,
-                    output_type="numpy",
+                    output_type="np.array",
                 )["sample"][0]
         else:
             with autocast("cuda"):
@@ -208,7 +208,7 @@ class GPUWorker:
                     width=width,
                     guidance_scale=guidance_scale,
                     num_inference_steps=num_inference_steps,
-                    output_type="numpy",
+                    output_type="np.array",
                 )["sample"][0]
         return image, ""
 

@@ -3,6 +3,7 @@ import typing
 from typing import Any
 
 import numpy as np
+import numpy.typing as npt
 import PIL
 import torch
 from diffusers import (
@@ -26,14 +27,13 @@ else:
     torch_no_grad = torch.no_grad
 
 
-def preprocess(image: PIL.Image) -> torch.Tensor:
+def preprocess(image: PIL.Image) -> npt.NDArray[np.float32]:
     w, h = image.size
     w = w - w % 32  # resize to integer multiple of 32
     h = h - h % 32
     image = image.resize((w, h), resample=PIL.Image.LANCZOS)
     image = np.array(image).astype(np.float32) / 255.0
     image = image[None].transpose(0, 3, 1, 2)
-    image = torch.from_numpy(image)
     return 2.0 * image - 1.0  # type: ignore[no-any-return]
 
 
@@ -49,7 +49,6 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):  # type: ignore[misc]
         feature_extractor: CLIPFeatureExtractor,
     ) -> None:
         super().__init__()
-        scheduler = scheduler.set_format("pt")
         self.register_modules(
             vae=vae,
             text_encoder=text_encoder,
