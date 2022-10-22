@@ -23,12 +23,12 @@ class _FakeModelProvider(model_provider.ModelProvider):
     async def __call__(
         self,
         prompt: str,
-        width: int,
-        height: int,
         seed: int,
-        strength: float,
-        guidance_scale: float,
-        num_inference_steps: int,
+        width: int = 512,
+        height: int = 512,
+        strength: float = 0.8,
+        guidance_scale: float = 7.5,
+        num_inference_steps: int = 50,
         init_image: npt.NDArray[np.float_] | None = None,
     ) -> npt.NDArray[np.float_]:
         assert False

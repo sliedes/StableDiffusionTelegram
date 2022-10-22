@@ -299,10 +299,11 @@ def main() -> None:
             ~telegram.ext.filters.UpdateType.EDITED_MESSAGE
             & ((telegram.ext.filters.TEXT & ~telegram.ext.filters.COMMAND) | telegram.ext.filters.PHOTO),
             bot.handle_update,
+            block=False,
         )
     )
-    app.add_handler(telegram.ext.MessageHandler(telegram.ext.filters.PHOTO, bot.handle_update))
-    app.add_handler(telegram.ext.CallbackQueryHandler(bot.handle_button))
+    app.add_handler(telegram.ext.MessageHandler(telegram.ext.filters.PHOTO, bot.handle_update, block=False))
+    app.add_handler(telegram.ext.CallbackQueryHandler(bot.handle_button, block=False))
 
     logger.info("Starting.")
     app.run_polling(read_timeout=20)

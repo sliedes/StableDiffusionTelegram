@@ -207,13 +207,13 @@ def test_extract_query_from_string() -> None:
 
 
 def assert_called_once_without_image(provider: ModelProvider) -> None:
-    fill_default_args(provider)  # type: ignore[arg-type]  # FIXME
-    assert_called_once_with_partial(provider, init_image=None)  # type: ignore[arg-type]
+    fill_default_args(provider)
+    assert_called_once_with_partial(provider, init_image=None)
 
 
 def assert_called_once_with_image(provider: ModelProvider) -> None:
     provider.assert_called_once()  # type: ignore[attr-defined]
-    fill_default_args(provider)  # type: ignore[arg-type]  # FIXME
+    fill_default_args(provider)
     assert isinstance(provider.call_args.kwargs["init_image"], np.ndarray)  # type: ignore[attr-defined]
 
 

@@ -1,5 +1,6 @@
 import asyncio
-from typing import Any, cast
+from functools import wraps
+from typing import Any, Callable, TypeVar, cast
 
 import numpy as np
 import numpy.typing as npt
@@ -57,27 +58,41 @@ def load_models() -> tuple[StableDiffusionPipeline, StableDiffusionImg2ImgPipeli
     return pipe, img2imgPipe
 
 
+F = TypeVar("F", bound=Callable[..., Any])
+
+
+def _with_autocast(func: F) -> F:
+    @wraps(func)
+    def wrapper(*args: Any, **kwargs: Any) -> Any:
+        with autocast("cuda"):
+            return func(*args, **kwargs)
+
+    return cast(F, wrapper)
+
+
 class LocalModelProvider(ModelProvider):
     """Provides a Stable Diffusion model locally."""
 
     _gpu_lock: asyncio.Lock
     _txt2imgPipe: StableDiffusionPipeline
+    _txt2imgPipe_locking: StableDiffusionPipeline
     _img2imgPipe: StableDiffusionImg2ImgPipeline
+    _img2imgPipe_locking: StableDiffusionImg2ImgPipeline
 
     def __init__(self) -> None:
         super().__init__()
-        self._txt2imgPipe, self._img2imgPipe = load_models()
         self._gpu_lock = asyncio.Lock()
+        self._txt2imgPipe, self._img2imgPipe = load_models()
 
     async def __call__(
         self,
         prompt: str,
-        width: int,
-        height: int,
         seed: int,
-        strength: float,
-        guidance_scale: float,
-        num_inference_steps: int,
+        width: int = 512,
+        height: int = 512,
+        strength: float = 0.8,
+        guidance_scale: float = 7.5,
+        num_inference_steps: int = 50,
         init_image: npt.NDArray[np.float_] | None = None,
     ) -> npt.NDArray[np.float_]:
         async with self._gpu_lock:
@@ -86,8 +101,9 @@ class LocalModelProvider(ModelProvider):
             generator.manual_seed(seed)
 
             if init_image is not None:
-                with autocast("cuda"):
-                    image = self._img2imgPipe(
+                image = (
+                    await asyncio.to_thread(
+                        _with_autocast(self._img2imgPipe),
                         prompt=[prompt],
                         init_image=cast(torch.FloatTensor, torch.as_tensor(init_image).to("cuda").float()),
                         generator=generator,
@@ -95,10 +111,12 @@ class LocalModelProvider(ModelProvider):
                         guidance_scale=guidance_scale,
                         num_inference_steps=num_inference_steps,
                         output_type="np.array",
-                    )["sample"][0]
+                    )
+                )["sample"][0]
             else:
-                with autocast("cuda"):
-                    image = self._txt2imgPipe(
+                image = (
+                    await asyncio.to_thread(
+                        _with_autocast(self._txt2imgPipe),
                         prompt=[prompt],
                         generator=generator,
                         strength=strength,
@@ -107,9 +125,10 @@ class LocalModelProvider(ModelProvider):
                         guidance_scale=guidance_scale,
                         num_inference_steps=num_inference_steps,
                         output_type="np.array",
-                    )["sample"][0]
-            assert isinstance(image, np.ndarray), type(image)
-            return image
+                    )
+                )["sample"][0]
+        assert isinstance(image, np.ndarray), type(image)
+        return image
 
 
 __all__ = ["LocalModelProvider"]

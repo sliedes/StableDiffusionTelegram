@@ -3,7 +3,6 @@ from unittest.mock import ANY, Mock
 import numpy as np
 import pytest
 import torch
-from PIL import Image
 from pytest_mock import MockerFixture
 
 import local_model_provider
