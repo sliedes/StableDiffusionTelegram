@@ -75,9 +75,7 @@ class LocalModelProvider(ModelProvider):
 
     _gpu_lock: asyncio.Lock
     _txt2imgPipe: StableDiffusionPipeline
-    _txt2imgPipe_locking: StableDiffusionPipeline
     _img2imgPipe: StableDiffusionImg2ImgPipeline
-    _img2imgPipe_locking: StableDiffusionImg2ImgPipeline
 
     def __init__(self) -> None:
         super().__init__()
@@ -105,14 +103,14 @@ class LocalModelProvider(ModelProvider):
                     await asyncio.to_thread(
                         _with_autocast(self._img2imgPipe),
                         prompt=[prompt],
-                        init_image=cast(torch.FloatTensor, torch.as_tensor(init_image).to("cuda").float()),
+                        init_image=cast(torch.FloatTensor, torch.as_tensor(init_image).to("cuda").float()),  # FIXME
                         generator=generator,
                         strength=strength,
                         guidance_scale=guidance_scale,
                         num_inference_steps=num_inference_steps,
                         output_type="np.array",
                     )
-                )["sample"][0]
+                ).images
             else:
                 image = (
                     await asyncio.to_thread(
@@ -126,7 +124,7 @@ class LocalModelProvider(ModelProvider):
                         num_inference_steps=num_inference_steps,
                         output_type="np.array",
                     )
-                )["sample"][0]
+                ).images
         assert isinstance(image, np.ndarray), type(image)
         return image
 

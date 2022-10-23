@@ -2,7 +2,9 @@ from unittest.mock import AsyncMock, Mock
 
 import numpy as np
 import numpy.typing as npt
-import PIL
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import (
+    StableDiffusionPipelineOutput,
+)
 
 import env
 import model_provider
@@ -15,7 +17,9 @@ def mock_StableDiffusionPipeline() -> Mock:
     )
     pipe = Mock(spec_set=pipe_spec)
     pipe.to.return_value = pipe
-    pipe.return_value = {"sample": [np.zeros((env.WIDTH, env.HEIGHT, 3), dtype=np.float16)]}
+    pipe.return_value = StableDiffusionPipelineOutput(
+        images=np.zeros((1, env.WIDTH, env.HEIGHT, 3), dtype=np.float16), nsfw_content_detected=[False]
+    )
     return pipe
 
 
@@ -36,5 +40,5 @@ class _FakeModelProvider(model_provider.ModelProvider):
 
 def mock_ModelProvider() -> Mock:
     p = AsyncMock(spec=_FakeModelProvider())
-    p.return_value = np.zeros((env.WIDTH, env.HEIGHT, 3), dtype=np.float16)
+    p.return_value = np.zeros((1, env.WIDTH, env.HEIGHT, 3), dtype=np.float16)
     return p

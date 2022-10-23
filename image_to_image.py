@@ -13,7 +13,10 @@ from diffusers import (
     PNDMScheduler,
     UNet2DConditionModel,
 )
-from diffusers.pipelines.stable_diffusion import StableDiffusionSafetyChecker
+from diffusers.pipelines.stable_diffusion import (
+    StableDiffusionPipelineOutput,
+    StableDiffusionSafetyChecker,
+)
 from tqdm.auto import tqdm
 from transformers import (  # type: ignore[attr-defined]
     CLIPFeatureExtractor,
@@ -70,7 +73,7 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):  # type: ignore[misc]
         eta: float | None = 0.0,
         generator: torch.Generator | None = None,
         output_type: str | None = "pil",
-    ) -> dict[str, Any]:  # FIXME better return type
+    ) -> StableDiffusionPipelineOutput:
         if isinstance(prompt, str):
             batch_size = 1
         elif isinstance(prompt, list):
@@ -175,4 +178,4 @@ class StableDiffusionImg2ImgPipeline(DiffusionPipeline):  # type: ignore[misc]
         if output_type == "pil":
             image = self.numpy_to_pil(image)
 
-        return {"sample": image, "nsfw_content_detected": has_nsfw_concept}
+        return StableDiffusionPipelineOutput(images=image, nsfw_content_detected=has_nsfw_concept)

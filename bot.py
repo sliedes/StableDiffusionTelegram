@@ -91,26 +91,30 @@ async def generate_image(
         init_image = Image.open(BytesIO(photo)).convert("RGB")
         init_image = init_image.resize((height, width))
         init_image = preprocess(init_image)
-        image = await model_provider(
-            prompt=prompt,
-            width=width,
-            height=height,
-            seed=seed,
-            strength=strength,
-            guidance_scale=guidance_scale,
-            num_inference_steps=num_inference_steps,
-            init_image=init_image,
-        )
+        image = (
+            await model_provider(
+                prompt=prompt,
+                width=width,
+                height=height,
+                seed=seed,
+                strength=strength,
+                guidance_scale=guidance_scale,
+                num_inference_steps=num_inference_steps,
+                init_image=init_image,
+            )
+        )[0]
     else:
-        image = await model_provider(
-            prompt=prompt,
-            width=width,
-            height=height,
-            seed=seed,
-            strength=strength,
-            guidance_scale=guidance_scale,
-            num_inference_steps=num_inference_steps,
-        )
+        image = (
+            await model_provider(
+                prompt=prompt,
+                width=width,
+                height=height,
+                seed=seed,
+                strength=strength,
+                guidance_scale=guidance_scale,
+                num_inference_steps=num_inference_steps,
+            )
+        )[0]
     return numpy_to_pil(image), seed, prompt
 
 

@@ -5,6 +5,9 @@ from unittest.mock import ANY, Mock
 
 import numpy as np
 import pytest
+from diffusers.pipelines.stable_diffusion.pipeline_stable_diffusion import (
+    StableDiffusionPipelineOutput,
+)
 from grpc.aio import ServicerContext  # pyright: ignore[reportMissingImports]
 from pytest_mock import MockerFixture
 
@@ -65,7 +68,9 @@ def check_image(im: Image, expect_dims: int | None = None) -> None:
 
 async def test_txt2img_compute(servicer: ModelServicer) -> None:
     req = make_ImGenRequest(prompt="A ball on a floor", test_no_compute=False, iterations=2)
-    servicer.worker._a_pipe.return_value = {"sample": [np.zeros((env.WIDTH, env.HEIGHT, 3), dtype=np.float16)]}
+    servicer.worker._a_pipe.return_value = StableDiffusionPipelineOutput(
+        images=np.zeros((1, env.WIDTH, env.HEIGHT, 3), dtype=np.float16), nsfw_content_detected=[False]
+    )
     resp = await servicer.generate_image(req, context=Mock(spec_set=ServicerContext))
     servicer.worker._a_pipe.assert_called_once_with(
         **dict(
@@ -94,7 +99,9 @@ async def test_txt2img_nocompute(servicer: ModelServicer) -> None:
 async def test_img2img_compute(servicer: ModelServicer) -> None:
     req = make_ImGenRequest(prompt="A ball on a floor", test_no_compute=False, iterations=2)
     req.image.CopyFrom(_Image_template)
-    servicer.worker._a_img2imgpipe.return_value = {"sample": [np.zeros((env.WIDTH, env.HEIGHT, 3), dtype=np.float16)]}
+    servicer.worker._a_img2imgpipe.return_value = StableDiffusionPipelineOutput(
+        images=np.zeros((1, env.WIDTH, env.HEIGHT, 3), dtype=np.float16), nsfw_content_detected=[False]
+    )
     resp = await servicer.generate_image(req, context=Mock(spec_set=ServicerContext))
     servicer.worker._a_img2imgpipe.assert_called_once_with(
         **dict(

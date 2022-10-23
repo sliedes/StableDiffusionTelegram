@@ -66,3 +66,17 @@ async def test_img2img(provider: local_model_provider.LocalModelProvider) -> Non
     assert isinstance(ret, np.ndarray)
     provider._txt2imgPipe.assert_not_called()
     provider._img2imgPipe.assert_called()
+
+
+async def test_returns_4d(provider: local_model_provider.LocalModelProvider) -> None:
+    ret = await provider(
+        prompt="Hello",
+        width=512,
+        height=512,
+        seed=1234,
+        strength=0.7,
+        guidance_scale=7.5,
+        num_inference_steps=50,
+        init_image=None,
+    )
+    assert ret.shape == (1, 512, 512, 3)

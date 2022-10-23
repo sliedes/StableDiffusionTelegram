@@ -197,7 +197,7 @@ class GPUWorker:
                     guidance_scale=guidance_scale,
                     num_inference_steps=num_inference_steps,
                     output_type="np.array",
-                )["sample"][0]
+                ).images[0]
         else:
             with autocast("cuda"):
                 image = self._a_pipe(
@@ -209,7 +209,7 @@ class GPUWorker:
                     guidance_scale=guidance_scale,
                     num_inference_steps=num_inference_steps,
                     output_type="np.array",
-                )["sample"][0]
+                ).images[0]
         return image, ""
 
     @logger.catch
